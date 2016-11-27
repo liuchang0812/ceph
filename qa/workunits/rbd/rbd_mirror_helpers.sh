@@ -731,9 +731,13 @@ test_image_present()
     local pool=$2
     local image=$3
     local test_state=$4
+    local image_id=$5
     local current_state=deleted
+    local current_image_id
 
-    rbd --cluster=${cluster} -p ${pool} ls | grep "^${image}$" &&
+    current_image_id=$(get_image_id ${cluster} ${pool} ${image})
+    test -n "${current_image_id}" &&
+    test -z "${image_id}" -o "${image_id}" = "${current_image_id}" &&
     current_state=present
 
     test "${test_state}" = "${current_state}"
@@ -745,12 +749,18 @@ wait_for_image_present()
     local pool=$2
     local image=$3
     local state=$4
+    local image_id=$5
     local s
+
+    test -n "${image_id}" ||
+    image_id=$(get_image_id ${cluster} ${pool} ${image})
 
     # TODO: add a way to force rbd-mirror to update replayers
     for s in 0.1 1 2 4 8 8 8 8 8 8 8 8 16 16 32 32; do
 	sleep ${s}
-	test_image_present "${cluster}" "${pool}" "${image}" "${state}" && return 0
+	test_image_present \
+            "${cluster}" "${pool}" "${image}" "${state}" "${image_id}" &&
+        return 0
     done
     return 1
 }
@@ -762,6 +772,16 @@ request_resync_image()
     local image=$3
 
     rbd --cluster=${cluster} -p ${pool} mirror image resync ${image}
+}
+
+get_image_id()
+{
+    local cluster=$1
+    local pool=$2
+    local image=$3
+
+    rbd --cluster=${cluster} -p ${pool} info ${image} |
+	sed -ne 's/^.*block_name_prefix: rbd_data\.//p'
 }
 
 #
