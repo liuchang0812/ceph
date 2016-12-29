@@ -271,7 +271,7 @@ done
 run_expect_nosignal "$RADOS_TOOL" --pool "$POOL" bench 1 rand
 run_expect_nosignal "$RADOS_TOOL" --pool "$POOL" bench 1 seq
 
-set -e 
+set -e
 
 OBJ=test_rados_obj
 
