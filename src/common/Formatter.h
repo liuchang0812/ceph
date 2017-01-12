@@ -136,7 +136,7 @@ namespace ceph {
   class XMLFormatter : public Formatter {
   public:
     static const char *XML_1_DTD;
-    XMLFormatter(bool pretty = false, bool lowercased_underscored = false);
+    XMLFormatter(bool pretty = false, bool lowercased_underscored = true);
 
     virtual void set_status(int status, const char* status_name) {}
     virtual void output_header();
