@@ -89,6 +89,18 @@ public:
   void print_summary(Formatter *f, std::ostream *ss) const;
 
   friend class C_Updated;
+
+  typedef std::map<std::string, std::string> Metadata;
+  typedef uint64_t mgr_gid_t;
+
+  int dump_metadata(uint64_t gid, Formatter *f, ostream& err);
+
+  void update_metadata(uint64_t gid, const Metadata& metadata);
+  void remove_from_metadata(MonitorDBStore::TransactionRef t);
+  int load_metadata(map<uint64_t, Metadata>& m);
+  void count_metadata(uint64_t gid, Formatter *f);
+
+  std::map<mgr_gid_t, Metadata> pending_metadata;
 };
 
 #endif

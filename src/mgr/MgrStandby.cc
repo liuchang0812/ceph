@@ -153,6 +153,10 @@ void MgrStandby::send_beacon()
   PyModules::list_modules(&modules);
   bool available = active_mgr != nullptr && active_mgr->is_initialized();
   auto addr = available ? active_mgr->get_server_addr() : entity_addr_t();
+  // FIXME: only collect system information on boot?
+  map<string, string> sys_info;
+  collect_sys_info(&sys_info, g_ceph_context);
+
   dout(10) << "sending beacon as gid " << monc.get_global_id()
 	   << " modules " << modules << dendl;
 
@@ -161,7 +165,9 @@ void MgrStandby::send_beacon()
                                  g_conf->name.get_id(),
                                  addr,
                                  available,
-				 modules);
+				 modules,
+                                 sys_info);
+
   monc.send_mon_message(m);
 }
 

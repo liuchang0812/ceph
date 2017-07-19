@@ -22,7 +22,7 @@
 
 class MMgrBeacon : public PaxosServiceMessage {
 
-  static const int HEAD_VERSION = 3;
+  static const int HEAD_VERSION = 4;
   static const int COMPAT_VERSION = 1;
 
 protected:
@@ -32,7 +32,7 @@ protected:
   std::string name;
   uuid_d fsid;
   std::set<std::string> available_modules;
-
+  std::map<std::string, std::string> sys_info;
 public:
   MMgrBeacon()
     : PaxosServiceMessage(MSG_MGR_BEACON, 0, HEAD_VERSION, COMPAT_VERSION),
@@ -42,10 +42,12 @@ public:
 
   MMgrBeacon(const uuid_d& fsid_, uint64_t gid_, const std::string &name_,
              entity_addr_t server_addr_, bool available_,
-	     const std::set<std::string>& module_list)
+	     const std::set<std::string>& module_list,
+             const std::map<std::string, std::string> sys_info)
     : PaxosServiceMessage(MSG_MGR_BEACON, 0, HEAD_VERSION, COMPAT_VERSION),
       gid(gid_), server_addr(server_addr_), available(available_), name(name_),
-      fsid(fsid_), available_modules(module_list)
+      fsid(fsid_), available_modules(module_list),
+      sys_info(sys_info)
   {
   }
 
@@ -77,6 +79,7 @@ public:
     ::encode(name, payload);
     ::encode(fsid, payload);
     ::encode(available_modules, payload);
+    ::encode(sys_info, payload);
   }
   void decode_payload() override {
     bufferlist::iterator p = payload.begin();
@@ -90,6 +93,10 @@ public:
     }
     if (header.version >= 3) {
       ::decode(available_modules, p);
+    }
+
+    if (header.version >= 4) {
+      ::decode(sys_info, p);
     }
   }
 };

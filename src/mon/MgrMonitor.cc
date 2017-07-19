@@ -755,3 +755,26 @@ void MgrMonitor::on_shutdown()
 }
 
 
+int MgrMonitor::dump_metadata(mgr_gid_t gid, Formatter *f, ostream& err)
+{
+  assert(f);
+
+  map<mgr_gid_t, Metadata> metadata;
+  int r = load_metadata(metadata);
+  if (r) {
+    err << "Unable to load 'last_metadata'";
+    return r;
+  }
+
+  if (metadata.find(gid) == metadata.end())
+  {
+    return -ENOENT;
+  }
+
+  const Metadata& m = metadata[gid];
+  for (Metadata::const_iterator p = m.begin(); p != m.end(); ++p) {
+    f->dump_string(p->first.c_str(), p->second);
+  }
+  return 0;
+}
+}
