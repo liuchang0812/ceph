@@ -57,6 +57,7 @@ public:
   const std::string& get_name() const { return name; }
   const uuid_d& get_fsid() const { return fsid; }
   std::set<std::string>& get_available_modules() { return available_modules; }
+  const std::map<std::string, std::string>& get_sys_info() { return sys_info; }
 
 private:
   ~MMgrBeacon() override {}

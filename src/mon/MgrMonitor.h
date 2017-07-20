@@ -97,8 +97,8 @@ public:
 
   void update_metadata(uint64_t gid, const Metadata& metadata);
   void remove_from_metadata(MonitorDBStore::TransactionRef t);
-  int load_metadata(map<uint64_t, Metadata>& m);
-  void count_metadata(uint64_t gid, Formatter *f);
+  int load_metadata(std::map<uint64_t, Metadata>& m);
+  void count_metadata(const std::string& gid, Formatter *f);
 
   std::map<mgr_gid_t, Metadata> pending_metadata;
 };
