@@ -95,6 +95,15 @@ public:
     return true;
   }
 
+  bool gid_exists(uint64_t gid) const {
+
+    if (gid == active_gid) {
+      return true;
+    }
+
+    return standbys.find(gid) != standbys.end();
+  }
+
   void encode(bufferlist& bl, uint64_t features) const
   {
     ENCODE_START(2, 1, bl);

@@ -1013,3 +1013,8 @@ COMMAND("mgr module enable "						\
 COMMAND("mgr module disable "						\
 	"name=module,type=CephString",
 	"disable mgr module", "mgr", "rw", "cli,rest")
+
+// FIXME: support name param
+COMMAND("mgr metadata",
+	"fetch metadata for mgr",
+	"mgr", "r", "cli,rest")

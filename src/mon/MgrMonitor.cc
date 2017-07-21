@@ -34,6 +34,7 @@ static ostream& _prefix(std::ostream *_dout, Monitor *mon,
 		<< ").mgr e" << mgrmap.get_epoch() << " ";
 }
 
+static const string MGR_METADATA_PREFIX("mgr_metadata");
 
 void MgrMonitor::create_initial()
 {
@@ -306,6 +307,7 @@ bool MgrMonitor::prepare_beacon(MonOpRequestRef op)
 
   if (updated) {
     dout(4) << "updating map" << dendl;
+    update_metadata(m->get_gid(), m->get_sys_info());
     wait_for_finished_proposal(op, new C_Updated(this, op));
   } else {
     dout(10) << "no change" << dendl;
@@ -612,6 +614,53 @@ bool MgrMonitor::preprocess_command(MonOpRequestRef op)
     }
     f->close_section();
     f->flush(rdata);
+  } else if (prefix == "mgr metadata") { 
+    if (!f)
+      f.reset(Formatter::create("json-pretty"));
+
+    f->open_object_section("mgr_metadata");
+
+    if (map.active_gid) {
+      f->open_object_section("mgr");
+      // dump active
+      f->dump_string("name", map.active_name);
+      f->dump_int("gid", map.gid);
+      r = dump_metadata(map.gid, f.get(), get_err);
+
+      if (r == -EINVAL || r == -ENOENT) {
+        // Drop error, list what metadata we do have
+        dout(1) << get_err.str() << dendl;
+        r = 0;
+      } else if (r != 0) {
+          derr << "Unexpected error reading metadata: " << cpp_strerror(r)
+               << dendl;
+          ss << get_err.str();
+          break;
+      }
+      f->close_section();
+    }
+
+    for (const auto &i : map.standbys) {
+      f->open_object_section("mgr");
+      // dump active
+      f->dump_string("name", i.name);
+      f->dump_int("gid", i.gid);
+      r = dump_metadata(i.gid, f.get(), get_err);
+
+      if (r == -EINVAL || r == -ENOENT) {
+        // Drop error, list what metadata we do have
+        dout(1) << get_err.str() << dendl;
+        r = 0;
+      } else if (r != 0) {
+          derr << "Unexpected error reading metadata: " << cpp_strerror(r)
+               << dendl;
+          ss << get_err.str();
+          break;
+      }
+      f->close_section();
+    }
+
+    f->close_section(); // mgr_metadata
   } else {
     return false;
   }
@@ -754,4 +803,97 @@ void MgrMonitor::on_shutdown()
   cancel_timer();
 }
 
+
+int MgrMonitor::dump_metadata(mgr_gid_t gid, Formatter *f, ostream& err)
+{
+  assert(f);
+
+  std::map<mgr_gid_t, Metadata> metadata;
+  int r = load_metadata(metadata);
+  if (r) {
+    err << "Unable to load 'last_metadata'";
+    return r;
+  }
+
+  if (metadata.find(gid) == metadata.end())
+  {
+    return -ENOENT;
+  }
+
+  const Metadata& m = metadata[gid];
+  for (Metadata::const_iterator p = m.begin(); p != m.end(); ++p) {
+    f->dump_string(p->first.c_str(), p->second);
+  }
+  return 0;
+}
+
+
+void MgrMonitor::update_metadata(mgr_gid_t gid, const std::map<string, string>& metadata)
+{
+
+  if (metadata.empty()) {
+    return ;
+  }
+
+  pending_metadata[gid] = metadata;
+
+  MonitorDBStore::TransactionRef t = paxos->get_pending_transaction();
+  bufferlist bl;
+  ::encode(pending_metadata, bl);
+  t->put(MGR_METADATA_PREFIX, "last_metadata", bl);
+  paxos->trigger_propose();
+}
+
+void MgrMonitor::remove_from_metadata(MonitorDBStore::TransactionRef t)
+{
+  bool update = false;
+  for (std::map<mgr_gid_t, Metadata>::iterator i = pending_metadata.begin();
+       i != pending_metadata.end(); ) {
+    if (!pending_map.gid_exists(i->first)) {
+      pending_metadata.erase(i++);
+      update = true;
+    } else {
+      ++i;
+    }
+  }
+  if (!update)
+    return;
+  bufferlist bl;
+  ::encode(pending_metadata, bl);
+  t->put(MGR_METADATA_PREFIX, "last_metadata", bl);
+}
+
+int MgrMonitor::load_metadata(std::map<mgr_gid_t, Metadata>& m)
+{
+  bufferlist bl;
+  int r = mon->store->get(MGR_METADATA_PREFIX, "last_metadata", bl);
+  if (r) {
+    dout(1) << "Unable to load 'last_metadata'" << dendl;
+    return r;
+  }
+
+  bufferlist::iterator it = bl.begin();
+  ::decode(m, it);
+  return 0;
+}
+
+void MgrMonitor::count_metadata(const std::string& field, Formatter *f)
+{
+  std::map<string,int> by_val;
+  std::map<mgr_gid_t,Metadata> meta;
+  load_metadata(meta);
+  for (auto& p : meta) {
+    auto q = p.second.find(field);
+    if (q == p.second.end()) {
+      by_val["unknown"]++;
+    } else {
+      by_val[q->second]++;
+    }
+  }
+  f->open_object_section(field.c_str());
+  for (auto& p : by_val) {
+    f->dump_int(p.first.c_str(), p.second);
+  }
+  f->close_section();
+}
 
