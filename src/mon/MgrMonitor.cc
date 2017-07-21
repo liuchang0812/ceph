@@ -614,6 +614,53 @@ bool MgrMonitor::preprocess_command(MonOpRequestRef op)
     }
     f->close_section();
     f->flush(rdata);
+  } else if (prefix == "mgr metadata") { 
+    if (!f)
+      f.reset(Formatter::create("json-pretty"));
+
+    f->open_object_section("mgr_metadata");
+
+    if (map.active_gid) {
+      f->open_object_section("mgr");
+      // dump active
+      f->dump_string("name", map.active_name);
+      f->dump_int("gid", map.gid);
+      r = dump_metadata(map.gid, f.get(), get_err);
+
+      if (r == -EINVAL || r == -ENOENT) {
+        // Drop error, list what metadata we do have
+        dout(1) << get_err.str() << dendl;
+        r = 0;
+      } else if (r != 0) {
+          derr << "Unexpected error reading metadata: " << cpp_strerror(r)
+               << dendl;
+          ss << get_err.str();
+          break;
+      }
+      f->close_section();
+    }
+
+    for (const auto &i : map.standbys) {
+      f->open_object_section("mgr");
+      // dump active
+      f->dump_string("name", i.name);
+      f->dump_int("gid", i.gid);
+      r = dump_metadata(i.gid, f.get(), get_err);
+
+      if (r == -EINVAL || r == -ENOENT) {
+        // Drop error, list what metadata we do have
+        dout(1) << get_err.str() << dendl;
+        r = 0;
+      } else if (r != 0) {
+          derr << "Unexpected error reading metadata: " << cpp_strerror(r)
+               << dendl;
+          ss << get_err.str();
+          break;
+      }
+      f->close_section();
+    }
+
+    f->close_section(); // mgr_metadata
   } else {
     return false;
   }
