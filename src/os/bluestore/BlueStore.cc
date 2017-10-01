@@ -4474,7 +4474,7 @@ bool BlueStore::test_mount_in_use()
   return ret;
 }
 
-int BlueStore::_open_db(bool create)
+int BlueStore::_open_db(bool create, bool to_repair_db)
 {
   int r;
   assert(!db);
@@ -4734,6 +4734,8 @@ int BlueStore::_open_db(bool create)
   if (kv_backend == "rocksdb")
     options = cct->_conf->bluestore_rocksdb_options;
   db->init(options);
+  if (to_repair_db)
+    return 0;
   if (create)
     r = db->create_and_open(err);
   else
@@ -4901,8 +4903,6 @@ int BlueStore::_balance_bluefs_freespace(PExtentVector *extents)
       dout(1) << __func__ << " gifting " << e << " to bluefs" << dendl;
       extents->push_back(e);
     }
-    gift = 0;
-
     ret = 1;
   }
 
@@ -5307,7 +5307,7 @@ void BlueStore::set_cache_shards(unsigned num)
   }
 }
 
-int BlueStore::_mount(bool kv_only)
+int BlueStore::_mount(bool kv_only, bool open_db)
 {
   dout(1) << __func__ << " path " << path << dendl;
 
@@ -5355,7 +5355,7 @@ int BlueStore::_mount(bool kv_only)
   if (r < 0)
     goto out_fsid;
 
-  r = _open_db(false);
+  r = _open_db(false, !open_db);
   if (r < 0)
     goto out_bdev;
 
@@ -10008,16 +10008,15 @@ int BlueStore::_do_alloc_write(
     bufferlist *l = &wi.bl;
     uint64_t final_length = wi.blob_length;
     uint64_t csum_length = wi.blob_length;
-    unsigned csum_order = block_size_order;
     if (wi.compressed) {
       final_length = wi.compressed_bl.length();
       csum_length = final_length;
-      csum_order = ctz(csum_length);
       l = &wi.compressed_bl;
       dblob.set_compressed(wi.blob_length, wi.compressed_len);
     } else if (wi.new_blob) {
       // initialize newly created blob only
       assert(dblob.is_mutable());
+      unsigned csum_order;
       if (l->length() != wi.blob_length) {
         // hrm, maybe we could do better here, but let's not bother.
         dout(20) << __func__ << " forcing csum_order to block_size_order "
