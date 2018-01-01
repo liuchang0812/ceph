@@ -191,6 +191,14 @@ PyObject *ActivePyModules::get_python(const std::string &what)
     PyFormatter f;
     g_conf->show_config(&f);
     return f.get();
+  } else if (what == "config_scheme") {
+    PyFormatter f;
+    f.open_array_section("options");
+    for (const auto &i : g_conf->schema) {
+      i.second.dump(&f);
+    }
+    f.close_section();
+    return f.get();
   } else if (what == "mon_map") {
     PyFormatter f;
     cluster_state.with_monmap(
