@@ -778,6 +778,14 @@ class Module(MgrModule):
             def servers_data(self):
                 return self._servers()
 
+            def _config_scheme(self):
+                return global_instance().get("config_scheme")
+
+            @cherrypy.expose
+            @cherrypy.tools.json_out()
+            def config_scheme_data(self):
+                return self._config_scheme()
+
             def _health(self):
                 # Fuse osdmap with pg_summary to get description of pools
                 # including their PG states
