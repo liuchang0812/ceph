@@ -763,18 +763,39 @@ class Module(MgrModule):
                     content_data=json.dumps(self._health(), indent=2)
                 )
 
+
+            @cherrypy.expose
+            def pool_stats(self, pool_id):
+                template = env.get_template("pool_stats.html")
+                toplevel_data = self._toplevel_data()
+                obj = self.pool_stats_data()
+                for item in obj:
+                    for key in item:
+                        log.error('DEBUGLC ' + str(key))
+                    if int(item['pool_id']) != int(pool_id):
+                        continue
+                    content_data = item
+
+                return template.render(
+                    url_prefix = global_instance().url_prefix,
+                    ceph_version=global_instance().version,
+                    path_info=cherrypy.request.path_info,
+                    toplevel_data=json.dumps(toplevel_data, indent=2),
+                    content_data=json.dumps(content_data, indent=2)
+                )
+                
             @cherrypy.expose
             @cherrypy.tools.json_out()
             def pool_stats_data(self):
                 result = CommandResult('')
-        	global_instance().send_command(result, 'mon', '', json.dumps({
+                global_instance().send_command(result, 'mon', '', json.dumps({
                     'prefix': 'osd pool stats',
                     'format': 'json',
                 }), '')
                 r, outb, outs = result.wait()
                 if r != 0:
                     self.log.error('Error creating compat weight-set')
-                    return {"pool_stats": None}
+                    return {}
                 return json.loads(outb)
 
             @cherrypy.expose

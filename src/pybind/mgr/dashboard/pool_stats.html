@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block content %}
+
+<script>
+        $(document).ready(function(){
+            // Pre-populated initial data at page load
+            var content_data = {{ content_data }};
+
+            var refresh = function() {
+                $.get("{{ url_prefix }}/pool_stats_data/" + content_data.pool_id + "/", function(data) {
+                   content_data = data;
+                   setTimeout(refresh, 5000);
+                });
+            };
+            setTimeout(refresh, 5000);
+
+            rivets.bind($("#content"), content_data);
+        });
+</script>
+
+<section class="content-header">
+    <h1 rv-text="pool_name"></h1>
+</section>
+
+<section class="content">
+  <div class="box">
+	  <p rv-text="client_io_rate.write_op_per_sec"></p>
+	  <p rv-text="client_io_rate.write_bytes_sec"></p>
+	  <p rv-text="client_io_rate | length"></p>
+  </div>
+  <div class="box">
+      <div class="box-header">
+	  <h3 class="box-title">client io rate:</h3>
+      </div>
+      <div class="box-body">
+	  <table>
+	      <thead>
+	      <tr>
+		  <th>Key</th>
+		  <th>Value</th>
+	      </tr>
+	      </thead>
+	      <tbody>
+	      <tr rv-each-status-pair="rgw_status">
+		  <td rv-each-item="status-pair"> {item} </td>
+	      </tr>
+	      </tbody>
+	  </table>
+      </div>
+  </div>
+
+  <div class="box" rv-show="rgw_metadata | length">
+      <div class="box-header">
+	  <h3 class="box-title">Metadata</h3>
+      </div>
+      <div class="box-body">
+	  <table class="table table-condensed">
+	      <thead>
+	      <tr>
+		  <th>Key</th>
+		  <th>Value</th>
+	      </tr>
+	      </thead>
+	      <tbody>
+	      <tr rv-each-meta-pair="rgw_metadata">
+		  <td rv-each-item="meta-pair"> {item} </td>
+	      </tr>
+	      </tbody>
+	  </table>
+      </div>
+  </div>
+
+</section>
+
+<!-- /.content -->
+
+{% endblock %}
