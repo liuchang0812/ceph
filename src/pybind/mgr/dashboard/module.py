@@ -764,6 +764,20 @@ class Module(MgrModule):
                 )
 
             @cherrypy.expose
+            @cherrypy.tools.json_out()
+            def pool_stats_data(self):
+                result = CommandResult('')
+        	global_instance().send_command(result, 'mon', '', json.dumps({
+                    'prefix': 'osd pool stats',
+                    'format': 'json',
+                }), '')
+                r, outb, outs = result.wait()
+                if r != 0:
+                    self.log.error('Error creating compat weight-set')
+                    return {"pool_stats": None}
+                return json.loads(outb)
+
+            @cherrypy.expose
             def servers(self):
                 template = env.get_template("servers.html")
                 return template.render(
