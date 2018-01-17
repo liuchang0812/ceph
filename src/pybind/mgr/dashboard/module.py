@@ -787,6 +787,9 @@ class Module(MgrModule):
             @cherrypy.expose
             @cherrypy.tools.json_out()
             def pool_stats_data(self):
+                stats = global_instance().get("osd_pool_stats")
+                return stats
+
                 result = CommandResult('')
                 global_instance().send_command(result, 'mon', '', json.dumps({
                     'prefix': 'osd pool stats',
