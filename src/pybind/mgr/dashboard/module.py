@@ -768,13 +768,7 @@ class Module(MgrModule):
             def pool_stats(self, pool_id):
                 template = env.get_template("pool_stats.html")
                 toplevel_data = self._toplevel_data()
-                obj = self.pool_stats_data()
-                for item in obj:
-                    for key in item:
-                        log.error('DEBUGLC ' + str(key))
-                    if int(item['pool_id']) != int(pool_id):
-                        continue
-                    content_data = item
+                content_data = self.pool_stats_data(pool_id)
 
                 return template.render(
                     url_prefix = global_instance().url_prefix,
@@ -786,20 +780,45 @@ class Module(MgrModule):
                 
             @cherrypy.expose
             @cherrypy.tools.json_out()
-            def pool_stats_data(self):
-                stats = global_instance().get("osd_pool_stats")
-                return stats
+            def pool_stats_data(self, pool_id):
+                assert pool_id is not None
+                pool_stats = dict()
+                for item in global_instance().get("osd_pool_stats")['pool_stats']:
+                    if int(item['pool_id']) != int(pool_id):
+                        continue
+                    pool_stats.update(item)
 
-                result = CommandResult('')
-                global_instance().send_command(result, 'mon', '', json.dumps({
-                    'prefix': 'osd pool stats',
-                    'format': 'json',
-                }), '')
-                r, outb, outs = result.wait()
-                if r != 0:
-                    self.log.error('Error creating compat weight-set')
-                    return {}
-                return json.loads(outb)
+		for item in global_instance().get("df")['pools']:
+                    if int(item['id']) != int(pool_id):
+                        continue  
+		    pool_stats.update(item['stats'])
+                
+                # inserts some flags so that we could render page ealier is JS side
+                if len(pool_stats['recovery']):
+                    pool_stats['has_recovery_section'] = True
+                else:
+                    pool_stats['has_recovery_section'] = False
+                       
+
+                if len(pool_stats['recovery_rate']):	
+                    pool_stats['has_recovery_rate_section'] = True
+                else:
+                    pool_stats['has_recovery_rate_section'] = False
+
+                
+                if len(pool_stats['client_io_rate']):
+                    pool_stats['has_client_io_rate_section'] = True
+                else:
+                    pool_stats['has_client_io_rate_section'] = False
+
+
+                if 'cache_io_rate' in pool_stats and len(pool_stats['cache_io_rate']):
+                    pool_stats['has_cache_io_rate'] = True
+                else:
+                    pool_stats['has_cache_io_rate'] = False
+
+
+                return pool_stats
 
             @cherrypy.expose
             def servers(self):
