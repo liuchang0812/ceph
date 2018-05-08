@@ -1026,7 +1026,7 @@ class Thrasher:
             k = 0
             m = 99
             for pool in self.ceph_manager.list_pools():
-                min_size = self.ceph_manager.get_pool_property(pool, "min_size")
+                min_size = self.ceph_manager.get_pool_int_property(pool, "min_size")
                 self.log("pool {pool} min_size is {min_size}".format(pool=pool,min_size=min_size))
                 ec_profile = self.ceph_manager.get_pool_property(pool, "erasure_code_profile")
                 ec_profile_json = self.ceph_manager.raw_cluster_cmd(
