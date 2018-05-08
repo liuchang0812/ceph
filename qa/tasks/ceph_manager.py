@@ -1177,7 +1177,7 @@ class CephManager:
         for pool in pools:
             # we may race with a pool deletion; ignore failures here
             try:
-                self.pools[pool] = self.get_pool_property(pool, 'pg_num')
+                self.pools[pool] = self.get_pool_int_property(pool, 'pg_num')
             except CommandFailedError:
                 self.log('Failed to get pg_num from pool %s, ignoring' % pool)
 
@@ -1752,7 +1752,7 @@ class CephManager:
         """
         :param pool_name: pool
         :param prop: property to be checked.
-        :returns: property as an int value.
+        :returns: property as string
         """
         with self.lock:
             assert isinstance(pool_name, basestring)
@@ -1763,7 +1763,10 @@ class CephManager:
                 'get',
                 pool_name,
                 prop)
-            return int(output.split()[1])
+            return output.split()[1]
+
+    def get_pool_int_property(self, pool_name, prop):
+        return int(self.get_pool_property(pool_name, prop))
 
     def set_pool_property(self, pool_name, prop, val):
         """
