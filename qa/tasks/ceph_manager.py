@@ -1018,6 +1018,7 @@ class Thrasher:
         minout = self.config.get("min_out", 1)
         minlive = self.config.get("min_live", 2)
         mindead = self.config.get("min_dead", 1)
+        self.log("doing min_size thrashing")
         assert self.ceph_manager.is_clean(), \
             'not clean before minsize thrashing starts'
         while not self.stopping:
@@ -1045,25 +1046,34 @@ class Thrasher:
                 if local_m < m:
                     self.log("setting m={local_m} from previous {m}".format(local_m=local_m, m=m))
                     m = local_m
+
+            self.log("using k={k}, m={m}".format(k=k,m=m))
                     
             if minout > len(self.out_osds): # kill OSDs and mark out
+                self.log("forced to out an osd")
                 self.kill_osd(mark_out=True)
                 continue
             elif mindead > len(self.dead_osds): # kill OSDs but force timeout
+                self.log("forced to kill an osd")
                 self.kill_osd()
                 continue
             else: # make mostly-random choice to kill or revive OSDs
                 minup = max(minlive, k)
                 rand_val = random.uniform(0, 1)
+                self.log("choosing based on number of live OSDs and rand val {rand}".\
+                         format(rand=rand_val))
                 if (len(self.live_osds) > minup+1 and rand_val < 0.5):
                     # chose to knock out as many OSDs as we can w/out downing PGs
+                    
                     most_killable = min(len(self.live_osds) - minup, m)
+                    self.log("chose to kill {n} OSDs".format(n=most_killable))
                     for i in range(1, most_killable):
                         self.kill_osd(mark_out=True)
                     time.sleep(5)
                     assert self.ceph_manager.all_active_or_peered(), \
                             'not all PGs are active or peered 5 seconds after marking out OSDs'
                 else: # chose to revive OSDs, bring up a random fraction of the dead ones
+                    self.log("chose to revive osds")
                     for i in range(1, int(rand_val * len(self.dead_osds))):
                         revive_osd()
 
