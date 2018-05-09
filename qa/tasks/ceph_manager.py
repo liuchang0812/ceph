@@ -1015,9 +1015,9 @@ class Thrasher:
         Loop to selectively push PGs below their min_size and test that recovery
         still occurs.
         """
-        minout = self.config.get("min_out", 1)
-        minlive = self.config.get("min_live", 2)
-        mindead = self.config.get("min_dead", 1)
+        minout = int(self.config.get("min_out", 1))
+        minlive = int(self.config.get("min_live", 2))
+        mindead = int(self.config.get("min_dead", 1))
         self.log("doing min_size thrashing")
         assert self.ceph_manager.is_clean(), \
             'not clean before minsize thrashing starts'
@@ -1041,7 +1041,8 @@ class Thrasher:
                 ec_json = json.loads(ec_profile_json)
                 local_k = ec_json['k']
                 local_m = ec_json['m']
-                self.log("pool {pool} local_k={k} local_m={m}".format(pool=pool, k=k, m=m))
+                self.log("pool {pool} local_k={k} local_m={m}".format(pool=pool,
+                                                                      k=local_k, m=local_m))
                 if local_k > k:
                     self.log("setting k={local_k} from previous {k}".format(local_k=local_k, k=k))
                     k = local_k
