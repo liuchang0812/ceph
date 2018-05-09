@@ -1026,7 +1026,9 @@ class Thrasher:
             # changes as the cluster runs
             k = 0
             m = 99
+            has_pools = False
             for pool in self.ceph_manager.list_pools():
+                has_pools = True
                 min_size = self.ceph_manager.get_pool_int_property(pool, "min_size")
                 self.log("pool {pool} min_size is {min_size}".format(pool=pool,min_size=min_size))
                 ec_profile = self.ceph_manager.get_pool_property(pool, "erasure_code_profile")
@@ -1047,8 +1049,13 @@ class Thrasher:
                     self.log("setting m={local_m} from previous {m}".format(local_m=local_m, m=m))
                     m = local_m
 
-            self.log("using k={k}, m={m}".format(k=k,m=m))
-                    
+            if has_pools :
+                self.log("using k={k}, m={m}".format(k=k,m=m))
+            else:
+                self.log("No pools yet, waiting")
+                time.sleep(5)
+                continue
+                
             if minout > len(self.out_osds): # kill OSDs and mark out
                 self.log("forced to out an osd")
                 self.kill_osd(mark_out=True)
