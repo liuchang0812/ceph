@@ -28,8 +28,8 @@ namespace ceph {
   class Formatter;
 }
 
-extern ostream& operator<<(ostream& out, const sockaddr_storage &ss);
-extern ostream& operator<<(ostream& out, const sockaddr *sa);
+extern std::ostream& operator<<(std::ostream& out, const sockaddr_storage &ss);
+extern std::ostream& operator<<(std::ostream& out, const sockaddr *sa);
 
 typedef uint8_t entity_type_t;
 
@@ -79,7 +79,7 @@ public:
     return n;
   }
 
-  bool parse(const string& s) {
+  bool parse(const std::string& s) {
     const char *start = s.c_str();
     char *end;
     bool got = parse(start, &end);
@@ -118,7 +118,7 @@ public:
   }
   void dump(Formatter *f) const;
 
-  static void generate_test_instances(list<entity_name_t*>& o);
+  static void generate_test_instances(std::list<entity_name_t*>& o);
 };
 WRITE_CLASS_DENC(entity_name_t)
 
@@ -505,11 +505,11 @@ struct entity_addr_t {
 
   void dump(Formatter *f) const;
 
-  static void generate_test_instances(list<entity_addr_t*>& o);
+  static void generate_test_instances(std::list<entity_addr_t*>& o);
 };
 WRITE_CLASS_ENCODER_FEATURES(entity_addr_t)
 
-ostream& operator<<(ostream& out, const entity_addr_t &addr);
+std::ostream& operator<<(std::ostream& out, const entity_addr_t &addr);
 
 inline bool operator==(const entity_addr_t& a, const entity_addr_t& b) { return memcmp(&a, &b, sizeof(a)) == 0; }
 inline bool operator!=(const entity_addr_t& a, const entity_addr_t& b) { return memcmp(&a, &b, sizeof(a)) != 0; }
@@ -530,7 +530,7 @@ namespace std {
 } // namespace std
 
 struct entity_addrvec_t {
-  vector<entity_addr_t> v;
+  std::vector<entity_addr_t> v;
 
   entity_addrvec_t() {}
   explicit entity_addrvec_t(const entity_addr_t& a) : v({ a }) {}
@@ -552,9 +552,9 @@ struct entity_addrvec_t {
   void encode(bufferlist& bl, uint64_t features) const;
   void decode(bufferlist::const_iterator& bl);
   void dump(Formatter *f) const;
-  static void generate_test_instances(list<entity_addrvec_t*>& ls);
+  static void generate_test_instances(std::list<entity_addrvec_t*>& ls);
 
-  friend ostream& operator<<(ostream& out, const entity_addrvec_t& av) {
+  friend std::ostream& operator<<(std::ostream& out, const entity_addrvec_t& av) {
     if (av.v.empty()) {
       return out;
     } else if (av.v.size() == 1) {
@@ -604,7 +604,7 @@ struct entity_inst_t {
   }
 
   void dump(Formatter *f) const;
-  static void generate_test_instances(list<entity_inst_t*>& o);
+  static void generate_test_instances(std::list<entity_inst_t*>& o);
 };
 WRITE_CLASS_ENCODER_FEATURES(entity_inst_t)
 
@@ -637,11 +637,11 @@ namespace std {
 } // namespace std
 
 
-inline ostream& operator<<(ostream& out, const entity_inst_t &i)
+inline std::ostream& operator<<(std::ostream& out, const entity_inst_t &i)
 {
   return out << i.name << " " << i.addr;
 }
-inline ostream& operator<<(ostream& out, const ceph_entity_inst &i)
+inline std::ostream& operator<<(std::ostream& out, const ceph_entity_inst &i)
 {
   entity_inst_t n = i;
   return out << n;

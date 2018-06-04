@@ -30,9 +30,9 @@ namespace librados {
  * as the relevant tag, and the refcount will be decreased.
  */
 
-void cls_refcount_get(librados::ObjectWriteOperation& op, const string& tag, bool implicit_ref = false);
-void cls_refcount_put(librados::ObjectWriteOperation& op, const string& tag, bool implicit_ref = false);
-void cls_refcount_set(librados::ObjectWriteOperation& op, list<string>& refs);
-int cls_refcount_read(librados::IoCtx& io_ctx, string& oid, list<string> *refs, bool implicit_ref = false);
+void cls_refcount_get(librados::ObjectWriteOperation& op, const std::string& tag, bool implicit_ref = false);
+void cls_refcount_put(librados::ObjectWriteOperation& op, const std::string& tag, bool implicit_ref = false);
+void cls_refcount_set(librados::ObjectWriteOperation& op, std::list<std::string>& refs);
+int cls_refcount_read(librados::IoCtx& io_ctx, std::string& oid, std::list<std::string> *refs, bool implicit_ref = false);
 
 #endif

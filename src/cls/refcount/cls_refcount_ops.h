@@ -8,7 +8,7 @@
 #include "common/hobject.h"
 
 struct cls_refcount_get_op {
-  string tag;
+  std::string tag;
   bool implicit_ref;
 
   cls_refcount_get_op() : implicit_ref(false) {}
@@ -27,12 +27,12 @@ struct cls_refcount_get_op {
     DECODE_FINISH(bl);
   }
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_refcount_get_op*>& ls);
+  static void generate_test_instances(std::list<cls_refcount_get_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_refcount_get_op)
 
 struct cls_refcount_put_op {
-  string tag;
+  std::string tag;
   bool implicit_ref; // assume wildcard reference for
                           // objects without a set ref
 
@@ -53,12 +53,12 @@ struct cls_refcount_put_op {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_refcount_put_op*>& ls);
+  static void generate_test_instances(std::list<cls_refcount_put_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_refcount_put_op)
 
 struct cls_refcount_set_op {
-  list<string> refs;
+  std::list<std::string> refs;
 
   cls_refcount_set_op() {}
 
@@ -75,7 +75,7 @@ struct cls_refcount_set_op {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_refcount_set_op*>& ls);
+  static void generate_test_instances(std::list<cls_refcount_set_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_refcount_set_op)
 
@@ -98,12 +98,12 @@ struct cls_refcount_read_op {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_refcount_read_op*>& ls);
+  static void generate_test_instances(std::list<cls_refcount_read_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_refcount_read_op)
 
 struct cls_refcount_read_ret {
-  list<string> refs;
+  std::list<std::string> refs;
 
   cls_refcount_read_ret() {}
 
@@ -120,7 +120,7 @@ struct cls_refcount_read_ret {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_refcount_read_ret*>& ls);
+  static void generate_test_instances(std::list<cls_refcount_read_ret*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_refcount_read_ret)
 
@@ -141,7 +141,7 @@ struct cls_chunk_refcount_get_op {
     DECODE_FINISH(bl);
   }
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_chunk_refcount_get_op*>& ls);
+  static void generate_test_instances(std::list<cls_chunk_refcount_get_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_chunk_refcount_get_op)
 
@@ -163,12 +163,12 @@ struct cls_chunk_refcount_put_op {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_chunk_refcount_put_op*>& ls);
+  static void generate_test_instances(std::list<cls_chunk_refcount_put_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_chunk_refcount_put_op)
 
 struct cls_chunk_refcount_set_op {
-  set<hobject_t> refs;
+  std::set<hobject_t> refs;
 
   cls_chunk_refcount_set_op() {}
 
@@ -185,12 +185,12 @@ struct cls_chunk_refcount_set_op {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_chunk_refcount_set_op*>& ls);
+  static void generate_test_instances(std::list<cls_chunk_refcount_set_op*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_chunk_refcount_set_op)
 
 struct cls_chunk_refcount_read_ret {
-  set<hobject_t> refs;
+  std::set<hobject_t> refs;
 
   cls_chunk_refcount_read_ret() {}
 
@@ -207,7 +207,7 @@ struct cls_chunk_refcount_read_ret {
   }
 
   void dump(ceph::Formatter *f) const;
-  static void generate_test_instances(list<cls_chunk_refcount_read_ret*>& ls);
+  static void generate_test_instances(std::list<cls_chunk_refcount_read_ret*>& ls);
 };
 WRITE_CLASS_ENCODER(cls_chunk_refcount_read_ret)
 #endif

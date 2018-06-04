@@ -4,6 +4,7 @@
 #include "cls/refcount/cls_refcount_ops.h"
 #include "include/rados/librados.hpp"
 
+using namespace std;
 using namespace librados;
 
 

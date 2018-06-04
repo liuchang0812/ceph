@@ -212,7 +212,7 @@ public:
   }
 
   // output
-  ostream& gmtime(ostream& out) const {
+  std::ostream& gmtime(std::ostream& out) const {
     out.setf(std::ios::right);
     char oldfill = out.fill();
     out.fill('0');
@@ -241,7 +241,7 @@ public:
   }
 
   // output
-  ostream& gmtime_nsec(ostream& out) const {
+  std::ostream& gmtime_nsec(std::ostream& out) const {
     out.setf(std::ios::right);
     char oldfill = out.fill();
     out.fill('0');
@@ -270,7 +270,7 @@ public:
   }
 
   // output
-  ostream& asctime(ostream& out) const {
+  std::ostream& asctime(std::ostream& out) const {
     out.setf(std::ios::right);
     char oldfill = out.fill();
     out.fill('0');
@@ -296,7 +296,7 @@ public:
     return out;
   }
   
-  ostream& localtime(ostream& out) const {
+  std::ostream& localtime(std::ostream& out) const {
     out.setf(std::ios::right);
     char oldfill = out.fill();
     out.fill('0');
@@ -371,8 +371,8 @@ public:
   }
 
 
-  static int parse_date(const string& date, uint64_t *epoch, uint64_t *nsec,
-                        string *out_date=NULL, string *out_time=NULL) {
+  static int parse_date(const std::string& date, uint64_t *epoch, uint64_t *nsec,
+                        std::string *out_date=NULL, std::string *out_time=NULL) {
     struct tm tm;
     memset(&tm, 0, sizeof(tm));
 
@@ -397,7 +397,7 @@ public:
             buf[i] = '0';
           }
           buf[i] = '\0';
-          string err;
+          std::string err;
           *nsec = (uint64_t)strict_strtol(buf, 10, &err);
           if (!err.empty()) {
             return -EINVAL;

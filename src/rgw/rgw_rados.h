@@ -4,6 +4,7 @@
 #ifndef CEPH_RGWRADOS_H
 #define CEPH_RGWRADOS_H
 
+
 #include <functional>
 
 #include "include/rados/librados.hpp"
@@ -27,6 +28,14 @@
 #include "rgw_period_puller.h"
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
+
+namespace FDB {
+  // fdb headers
+  #define FDB_API_VERSION 510
+  #include <foundationdb/fdb_c.h>
+  #include <foundationdb/fdb_c_options.g.h>
+}
+
 
 class RGWWatcher;
 class SafeTimer;

@@ -38,10 +38,10 @@ namespace rados {
        */
       struct locker_id_t {
         entity_name_t locker;   // locker's client name
-        string cookie;          // locker's cookie.
+        std::string cookie;          // locker's cookie.
 
         locker_id_t() {}
-        locker_id_t(entity_name_t& _n, const string& _c) : locker(_n), cookie(_c) {}
+        locker_id_t(entity_name_t& _n, const std::string& _c) : locker(_n), cookie(_c) {}
 
         void encode(bufferlist &bl) const {
           ENCODE_START(1, 1, bl);
@@ -64,7 +64,7 @@ namespace rados {
           return false;
         }
         void dump(Formatter *f) const;
-        static void generate_test_instances(list<locker_id_t*>& o);
+        static void generate_test_instances(std::list<locker_id_t*>& o);
       };
       WRITE_CLASS_ENCODER(locker_id_t)
 
@@ -72,11 +72,11 @@ namespace rados {
       {
         utime_t expiration;  // expiration: non-zero means epoch of locker expiration
         entity_addr_t addr;  // addr: locker address
-        string description;  // description: locker description, may be empty
+        std::string description;  // description: locker description, may be empty
 
         locker_info_t() {}
         locker_info_t(const utime_t& _e, const entity_addr_t& _a,
-                      const string& _d) :  expiration(_e), addr(_a), description(_d) {}
+                      const std::string& _d) :  expiration(_e), addr(_a), description(_d) {}
 
         void encode(bufferlist &bl, uint64_t features) const {
           ENCODE_START(1, 1, bl);
@@ -93,14 +93,14 @@ namespace rados {
           DECODE_FINISH(bl);
         }
         void dump(Formatter *f) const;
-        static void generate_test_instances(list<locker_info_t *>& o);
+        static void generate_test_instances(std::list<locker_info_t *>& o);
       };
       WRITE_CLASS_ENCODER_FEATURES(locker_info_t)
 
       struct lock_info_t {
-        map<locker_id_t, locker_info_t> lockers; // map of lockers
+        std::map<locker_id_t, locker_info_t> lockers; // map of lockers
         ClsLockType lock_type;                   // lock type (exclusive / shared)
-        string tag;                              // tag: operations on lock can only succeed with this tag
+        std::string tag;                              // tag: operations on lock can only succeed with this tag
                                                  //      as long as set of non expired lockers
                                                  //      is bigger than 0.
 
@@ -123,7 +123,7 @@ namespace rados {
         }
         lock_info_t() : lock_type(LOCK_NONE) {}
         void dump(Formatter *f) const;
-        static void generate_test_instances(list<lock_info_t *>& o);
+        static void generate_test_instances(std::list<lock_info_t *>& o);
       };
       WRITE_CLASS_ENCODER_FEATURES(lock_info_t);
     }

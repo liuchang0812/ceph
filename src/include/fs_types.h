@@ -46,7 +46,7 @@ struct denc_traits<inodeno_t> {
   }
 };
 
-inline ostream& operator<<(ostream& out, const inodeno_t& ino) {
+inline std::ostream& operator<<(std::ostream& out, const inodeno_t& ino) {
   return out << hex << "0x" << ino.val << dec;
 }
 
@@ -90,7 +90,7 @@ struct file_layout_t {
   uint32_t object_size;   ///< until objects are this big
 
   int64_t pool_id;        ///< rados pool id
-  string pool_ns;         ///< rados pool namespace
+  std::string pool_ns;         ///< rados pool namespace
 
   file_layout_t(uint32_t su=0, uint32_t sc=0, uint32_t os=0)
     : stripe_unit(su),
@@ -115,12 +115,12 @@ struct file_layout_t {
   void encode(bufferlist& bl, uint64_t features) const;
   void decode(bufferlist::const_iterator& p);
   void dump(Formatter *f) const;
-  static void generate_test_instances(list<file_layout_t*>& o);
+  static void generate_test_instances(std::list<file_layout_t*>& o);
 };
 WRITE_CLASS_ENCODER_FEATURES(file_layout_t)
 
 WRITE_EQ_OPERATORS_5(file_layout_t, stripe_unit, stripe_count, object_size, pool_id, pool_ns);
 
-ostream& operator<<(ostream& out, const file_layout_t &layout);
+std::ostream& operator<<(std::ostream& out, const file_layout_t &layout);
 
 #endif
