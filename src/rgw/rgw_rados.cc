@@ -28,6 +28,7 @@
 #include "rgw_rest_conn.h"
 #include "rgw_cr_rados.h"
 #include "rgw_cr_rest.h"
+#include "rgw_fdb.h"
 
 #include "cls/rgw/cls_rgw_ops.h"
 #include "cls/rgw/cls_rgw_types.h"
@@ -8886,6 +8887,11 @@ int RGWRados::open_bucket_index(const RGWBucketInfo& bucket_info,
   bucket_oid.append(bucket.bucket_id);
 
   return 0;
+}
+
+int RGWRados::open_fdb() {
+  auto ret = openDatabase(&fdb_database);
+  return ret.err_code;
 }
 
 int RGWRados::open_bucket_index_base(const RGWBucketInfo& bucket_info,

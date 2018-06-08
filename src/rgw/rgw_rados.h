@@ -28,14 +28,7 @@
 #include "rgw_period_puller.h"
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
-
-namespace FDB {
-  // fdb headers
-  #define FDB_API_VERSION 510
-  #include <foundationdb/fdb_c.h>
-  #include <foundationdb/fdb_c_options.g.h>
-}
-
+#include "rgw_fdb.h"
 
 class RGWWatcher;
 class SafeTimer;
@@ -2289,6 +2282,8 @@ class RGWRados : public AdminSocketHook
   int open_bucket_index(const RGWBucketInfo& bucket_info, librados::IoCtx& index_ctx,
                         map<int, string>& oids, map<int, T>& bucket_objs,
                         int shard_id = -1, map<int, string> *bucket_instance_ids = NULL);
+
+  int open_fdb();
   void build_bucket_index_marker(const string& shard_id_str, const string& shard_marker,
       string *marker);
 
@@ -2332,6 +2327,8 @@ class RGWRados : public AdminSocketHook
   friend class RGWWatcher;
 
   Mutex bucket_id_lock;
+
+  FDBDatabase* fdb_database;
 
   // This field represents the number of bucket index object shards
   uint32_t bucket_index_max_shards;
