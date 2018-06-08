@@ -109,6 +109,7 @@ set(librgw_common_srcs
   rgw_crypt.cc
   rgw_crypt_sanitize.cc
   rgw_iam_policy.cc
+  rgw_fdb.cc
 )
 add_library(rgw_common OBJECT ${librgw_common_srcs})
 
@@ -165,7 +166,9 @@ target_link_libraries(rgw_a librados cls_otp_client cls_lock_client cls_rgw_clie
   ${CURL_LIBRARIES}
   ${EXPAT_LIBRARIES}
   ${OPENLDAP_LIBRARIES} ${CRYPTO_LIBS}
-  oath)
+  oath
+  fdb_c
+)
 
 if (WITH_RADOSGW_BEAST_FRONTEND)
   target_compile_definitions(rgw_a PUBLIC BOOST_COROUTINES_NO_DEPRECATION_WARNING)
