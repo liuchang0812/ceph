@@ -2205,6 +2205,7 @@ void RGWObjManifest::obj_iterator::operator++()
 
 int RGWObjManifest::generator::create_begin(CephContext *cct, RGWObjManifest *_m, const string& placement_rule, rgw_bucket& _b, rgw_obj& _obj)
 {
+  dout(5) << __func__ << " DEBUGLC " << dendl;
   manifest = _m;
 
   manifest->set_tail_placement(placement_rule, _b);
@@ -2717,6 +2718,7 @@ int RGWPutObjProcessor_Atomic::prepare_init(RGWRados *store, string *oid_rand)
 
 int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, string *oid_rand)
 {
+
   head_obj.init(bucket, obj_str);
 
   int r = prepare_init(store, oid_rand);
@@ -2733,13 +2735,20 @@ int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, string *oid_rand)
     }
   }
 
-  manifest.set_trivial_rule(max_chunk_size, store->ctx()->_conf->rgw_obj_stripe_size);
+  if (oid_rand)
+    manifest.set_prefix(obj_str + '.' + *oid_rand);
+
+  manifest.set_trivial_rule(0, store->ctx()->_conf->rgw_obj_stripe_size);
+  manifest.set_max_head_size(0);
+  manifest.set_head_size(0);
 
   r = manifest_gen.create_begin(store->ctx(), &manifest, bucket_info.placement_rule, head_obj.bucket, head_obj);
+  writing_obj = head_obj;
   if (r < 0) {
     return r;
   }
-
+  cur_obj = manifest_gen.get_cur_obj(store); 
+  // rgw_raw_obj_to_obj(bucket, cur_obj, &head_obj);
   return 0;
 }
 
@@ -2830,9 +2839,12 @@ int RGWPutObjProcessor_Atomic::do_complete(size_t accounted_size, const string& 
   if (r < 0)
     return r;
 
-  obj_ctx.obj.set_atomic(head_obj);
+  rgw_obj immutable_head_obj;
+  immutable_head_obj.init(bucket, obj_str + "_" + manifest.get_prefix());
 
-  RGWRados::Object op_target(store, bucket_info, obj_ctx, head_obj);
+  obj_ctx.obj.set_atomic(immutable_head_obj);
+
+  RGWRados::Object op_target(store, bucket_info, obj_ctx, immutable_head_obj);
 
   /* some object types shouldn't be versioned, e.g., multipart parts */
   op_target.set_versioning_disabled(!versioned_object);
@@ -2854,6 +2866,8 @@ int RGWPutObjProcessor_Atomic::do_complete(size_t accounted_size, const string& 
   obj_op.meta.zones_trace = zones_trace;
   obj_op.meta.modify_tail = true;
 
+
+  ldout(store->ctx(), 0) << "DEBUGLC: we should store obj_op to fdb here. name: " << writing_obj.key.name << " ns " << writing_obj.key.ns << " inst: " << writing_obj.key.instance << dendl;
   r = obj_op.write_meta(obj_len, accounted_size, attrs);
   if (r < 0) {
     return r;
@@ -7249,6 +7263,7 @@ int RGWRados::Object::Write::_do_write_meta(uint64_t size, uint64_t accounted_si
   r = index_op->complete(poolid, epoch, size, accounted_size,
                         meta.set_mtime, etag, content_type, &acl_bl,
                         meta.category, meta.remove_objs, meta.user_data);
+  ldout(store->ctx(), 0) << "debuglc: update index " << r << dendl;
   tracepoint(rgw_rados, complete_exit, req_id.c_str());
   if (r < 0)
     goto done_cancel;

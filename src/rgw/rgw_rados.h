@@ -466,6 +466,7 @@ public:
 
   void set_trivial_rule(uint64_t tail_ofs, uint64_t stripe_max_size) {
     RGWObjManifestRule rule(0, tail_ofs, 0, stripe_max_size);
+    rule.start_part_num = 1;
     rules[0] = rule;
     max_head_size = tail_ofs;
   }
@@ -4045,6 +4046,7 @@ class RGWPutObjProcessor_Atomic : public RGWPutObjProcessor_Aio
   bool versioned_object;
   uint64_t olh_epoch;
   string version_id;
+  rgw_obj writing_obj;
 
 protected:
   rgw_bucket bucket;
@@ -4085,7 +4087,7 @@ public:
                                 obj_str(_o),
                                 unique_tag(_t) {}
   int prepare(RGWRados *store, string *oid_rand) override;
-  virtual bool immutable_head() { return false; }
+  virtual bool immutable_head() { return true; }
   int handle_data(bufferlist& bl, off_t ofs, void **phandle, rgw_raw_obj *pobj, bool *again) override;
 
   void set_olh_epoch(uint64_t epoch) {
