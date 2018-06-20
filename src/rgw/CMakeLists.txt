@@ -3,13 +3,17 @@ add_executable(ceph_rgw_jsonparser
   rgw_jsonparser.cc)
 target_link_libraries(ceph_rgw_jsonparser
   rgw_a
-  global)
+  global
+  fdb_c
+  )
 
 add_executable(ceph_rgw_multiparser
   rgw_multiparser.cc)
 target_link_libraries(ceph_rgw_multiparser
   rgw_a
-  global)
+  global
+  fdb_c
+  )
 
 install(TARGETS
   ceph_rgw_jsonparser
@@ -166,8 +170,8 @@ target_link_libraries(rgw_a librados cls_otp_client cls_lock_client cls_rgw_clie
   ${CURL_LIBRARIES}
   ${EXPAT_LIBRARIES}
   ${OPENLDAP_LIBRARIES} ${CRYPTO_LIBS}
-  oath
   fdb_c
+  oath
 )
 
 if (WITH_RADOSGW_BEAST_FRONTEND)
@@ -197,7 +201,7 @@ endif (WITH_RADOSGW_BEAST_FRONTEND)
 
 add_library(radosgw_a STATIC ${radosgw_srcs}
   $<TARGET_OBJECTS:civetweb_common_objs>)
-target_link_libraries(radosgw_a rgw_a ${SSL_LIBRARIES})
+target_link_libraries(radosgw_a rgw_a ${SSL_LIBRARIES} fdb_c)
 
 add_executable(radosgw rgw_main.cc)
 target_link_libraries(radosgw radosgw_a librados
@@ -206,7 +210,9 @@ target_link_libraries(radosgw radosgw_a librados
   cls_version_client cls_user_client
   global ${FCGI_LIBRARY} ${LIB_RESOLV}
   ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${BLKID_LIBRARIES}
-  ${ALLOC_LIBS})
+  ${ALLOC_LIBS}
+  fdb_c
+  )
 # radosgw depends on cls libraries at runtime, but not as link dependencies
 add_dependencies(radosgw cls_rgw cls_lock cls_refcount
   cls_log cls_statelog cls_timeindex
@@ -222,7 +228,7 @@ target_link_libraries(radosgw-admin rgw_a librados
   cls_log_client cls_statelog_client cls_timeindex_client
   cls_version_client cls_user_client
   global ${FCGI_LIBRARY} ${LIB_RESOLV}
-  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${SSL_LIBRARIES} ${BLKID_LIBRARIES})
+  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${SSL_LIBRARIES} ${BLKID_LIBRARIES} fdb_c)
 install(TARGETS radosgw-admin DESTINATION bin)
 
 set(radosgw_es_srcs
@@ -233,14 +239,14 @@ target_link_libraries(radosgw-es rgw_a librados
   cls_log_client cls_statelog_client cls_timeindex_client
   cls_version_client cls_user_client
   global ${FCGI_LIBRARY} ${LIB_RESOLV}
-  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${SSL_LIBRARIES} ${BLKID_LIBRARIES})
+  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} ${SSL_LIBRARIES} ${BLKID_LIBRARIES} fdb_c)
 install(TARGETS radosgw-es DESTINATION bin)
 
 set(radosgw_token_srcs
   rgw_token.cc)
 add_executable(radosgw-token ${radosgw_token_srcs})
 target_link_libraries(radosgw-token librados
-  global ${ALLOC_LIBS})
+  global ${ALLOC_LIBS} fdb_c)
 install(TARGETS radosgw-token DESTINATION bin)
 
 set(radosgw_object_expirer_srcs
@@ -251,7 +257,7 @@ target_link_libraries(radosgw-object-expirer rgw_a librados
   cls_log_client cls_statelog_client cls_timeindex_client
   cls_version_client cls_user_client
   global ${FCGI_LIBRARY} ${LIB_RESOLV}
-  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES})
+  ${CURL_LIBRARIES} ${EXPAT_LIBRARIES} fdb_c)
 install(TARGETS radosgw-object-expirer DESTINATION bin)
 
 set(librgw_srcs
@@ -273,7 +279,9 @@ target_link_libraries(rgw PRIVATE
   global
   ${LIB_RESOLV}
   ${CURL_LIBRARIES}
-  ${EXPAT_LIBRARIES})
+  ${EXPAT_LIBRARIES}
+  fdb_c
+  )
 set_target_properties(rgw PROPERTIES OUTPUT_NAME rgw VERSION 2.0.0
   SOVERSION 2)
 install(TARGETS rgw DESTINATION ${CMAKE_INSTALL_LIBDIR})
@@ -299,7 +307,8 @@ target_link_libraries(rgw_admin_user PRIVATE
   global
   ${CURL_LIBRARIES}
   ${EXPAT_LIBRARIES}
-  fdb_c)
+  fdb_c
+  )
 set_target_properties(rgw_admin_user PROPERTIES OUTPUT_NAME rgw_admin_user VERSION 1.0.0
   SOVERSION 0)
 install(TARGETS rgw_admin_user DESTINATION ${CMAKE_INSTALL_LIBDIR})

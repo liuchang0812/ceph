@@ -27,13 +27,14 @@ void* runNetwork(void* arg) {
 }
 
 struct RunResult openDatabase(FDBDatabase** db) {
+    fdb_select_api_version(FDB_API_VERSION);
     fdb_error_t err = checkError(fdb_setup_network(), "setup network");
     if (err) {
         return RunResult(err);
     }
 
-    pthread_t *netThread;
-    pthread_create(netThread, nullptr, &runNetwork, nullptr);
+    pthread_t netThread;
+    pthread_create(&netThread, nullptr, &runNetwork, nullptr);
 
     FDBFuture *f = fdb_create_cluster(nullptr);
     err = checkError(fdb_future_block_until_ready(f), "block for cluster");

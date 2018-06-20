@@ -4750,6 +4750,10 @@ int RGWRados::initialize()
   if (ret < 0)
     return ret;
 
+  ret = open_fdb();
+  if (ret)
+    return ret;
+
   return init_complete();
 }
 
