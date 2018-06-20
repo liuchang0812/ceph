@@ -2749,7 +2749,7 @@ int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, string *oid_rand)
     return r;
   }
   cur_obj = manifest_gen.get_cur_obj(store); 
-  rgw_raw_obj_to_obj(bucket, cur_obj, &head_obj);
+  // rgw_raw_obj_to_obj(bucket, cur_obj, &head_obj);
   return 0;
 }
 
@@ -2843,9 +2843,9 @@ int RGWPutObjProcessor_Atomic::do_complete(size_t accounted_size, const string& 
   rgw_obj immutable_head_obj;
   immutable_head_obj.init(bucket, obj_str + "_" + manifest.get_prefix());
 
-  obj_ctx.obj.set_atomic(head_obj);
+  obj_ctx.obj.set_atomic(immutable_head_obj);
 
-  RGWRados::Object op_target(store, bucket_info, obj_ctx, head_obj);
+  RGWRados::Object op_target(store, bucket_info, obj_ctx, immutable_head_obj);
 
   /* some object types shouldn't be versioned, e.g., multipart parts */
   op_target.set_versioning_disabled(!versioned_object);
