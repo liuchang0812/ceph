@@ -2973,6 +2973,7 @@ public:
     class UpdateIndex {
       RGWRados::Bucket *target;
       string optag;
+      string obj_key;
       rgw_obj obj;
       uint16_t bilog_flags{0};
       BucketShard bs;
@@ -3019,6 +3020,14 @@ public:
       
       void set_zones_trace(rgw_zone_set *_zones_trace) {
         zones_trace = _zones_trace;
+      }
+
+      void set_obj_key(const string& key) {
+	obj_key = key;
+      }
+
+      string get_obj_key() {
+	return obj_key;
       }
 
       int prepare(RGWModifyOp, const string *write_tag);

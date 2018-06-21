@@ -2842,6 +2842,7 @@ int RGWPutObjProcessor_Atomic::do_complete(size_t accounted_size, const string& 
 
   rgw_obj immutable_head_obj;
   immutable_head_obj.init(bucket, obj_str + "_" + manifest.get_prefix());
+  immutable_head_obj.prefix = manifest.get_prefix();
 
   obj_ctx.obj.set_atomic(immutable_head_obj);
 
@@ -7364,6 +7365,7 @@ int RGWRados::Object::Write::write_meta(uint64_t size, uint64_t accounted_size,
 
   RGWRados::Bucket bop(target->get_store(), bucket_info);
   RGWRados::Bucket::UpdateIndex index_op(&bop, target->get_obj());
+  index_op.set_obj_key(get_req_state()->object.name);
   index_op.set_zones_trace(meta.zones_trace);
   
   bool assume_noent = (meta.if_match == NULL && meta.if_nomatch == NULL);
@@ -10371,10 +10373,12 @@ int RGWRados::SystemObject::Read::stat(RGWObjVersionTracker *objv_tracker)
 
 int RGWRados::Bucket::UpdateIndex::prepare(RGWModifyOp op, const string *write_tag)
 {
+  // hack here
+
+  RGWRados *store = target->get_store();
   if (blind) {
     return 0;
   }
-  RGWRados *store = target->get_store();
 
   if (write_tag && write_tag->length()) {
     optag = string(write_tag->c_str(), write_tag->length());
@@ -10408,6 +10412,44 @@ int RGWRados::Bucket::UpdateIndex::complete(int64_t poolid, uint64_t epoch,
     return 0;
   }
   RGWRados *store = target->get_store();
+  FDBTransaction *tr = nullptr;
+  fdb_error_t err = createTransaction(store->fdb_database, &tr, MAX_RETRY, MAX_TIMEOUT);
+
+  if (err) {
+      return err;
+  }
+  string fdb_key = obj.get_fdb_key();
+
+  string fdb_prefix = obj.prefix;
+  fdb_key = fdb_key.substr(0, fdb_key.size()-fdb_prefix.size()-1);
+
+  while(1) {
+    fdb_transaction_set(tr, (const uint8_t*)fdb_key.c_str(), fdb_key.size(), (const uint8_t*)fdb_prefix.c_str(), fdb_prefix.size());
+    if (!err) {
+      FDBFuture *f = fdb_transaction_commit(tr);
+      err = waitError(f);
+      fdb_future_destroy(f);
+    }
+
+    if (err) {
+      FDBFuture *f = fdb_transaction_on_error(tr, err);
+      fdb_error_t retryE = waitError(f);
+      fdb_future_destroy(f);
+      if (retryE) 
+      {
+	fdb_transaction_destroy(tr);
+	return retryE;
+      } else {
+	continue;
+      }
+
+    }
+    break;
+  }
+
+  fdb_transaction_destroy(tr);
+
+
   BucketShard *bs;
 
   int ret = get_bucket_shard(&bs);

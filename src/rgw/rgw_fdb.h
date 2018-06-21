@@ -7,7 +7,7 @@
 #include <foundationdb/fdb_c.h>
 #include <foundationdb/fdb_c_options.g.h>
 
-const uint64_t MAX_RETEY = 0xffffffffffffffff;
+const uint64_t MAX_RETRY = 0xffffffffffffffff;
 const uint64_t MAX_TIMEOUT = 5 * 1000;
 
 fdb_error_t waitError(FDBFuture *f);
@@ -32,5 +32,5 @@ struct RunResult run(FDBDatabase *db,
                      fdb_error_t (*func)(FDBTransaction*, void*, void*),
                      void* args,
                      void* result,
-                     uint64_t retryLimit = MAX_RETEY,
+                     uint64_t retryLimit = MAX_RETRY,
                      uint64_t timeout = MAX_TIMEOUT);
