@@ -2328,6 +2328,7 @@ class RGWRados : public AdminSocketHook
 
   Mutex bucket_id_lock;
 
+  public:
   FDBDatabase* fdb_database;
 
   // This field represents the number of bucket index object shards
