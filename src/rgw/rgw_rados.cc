@@ -5704,6 +5704,77 @@ int RGWRados::Bucket::List::list_objects_ordered(int64_t max,
 {
   RGWRados *store = target->get_store();
   CephContext *cct = store->ctx();
+
+  // hook fdb here
+  { 
+  result->clear();
+
+  string bucket_id = target->bucket.bucket_id;
+  string marker_str = "RGW_PREFIX_" + bucket_id + "_" + params.marker.name;
+
+  string bucket_prefix_str = "RGW_PREFIX_" + bucket_id + "_";
+  string prefix_str = "RGW_PREFIX_" + bucket_id + "_" + params.prefix;
+
+  string delim_str = params.delim.empty() ? "/" : params.delim;
+
+  ldout(cct,0) << "DEBUGLC: ListBucket with marker_str: " << marker_str << " prefix_str: " << prefix_str << " delim_str: " << delim_str << dendl;
+  string endMarker = "RGW_PREFIX_" + bucket_id + "a";
+
+  int op_ret = 0;
+  // getrange fdb
+  FDBTransaction *tr = nullptr;
+  fdb_error_t err = createTransaction(store->fdb_database, &tr, MAX_RETRY, MAX_TIMEOUT);
+  if (err) {
+    op_ret = -1;
+  }
+  while(op_ret == 0) {
+    FDBFuture *getFuture = fdb_transaction_get_range(tr,
+       	(const uint8_t*)marker_str.c_str(), (int)marker_str.size(), 1, 0, 
+	(const uint8_t*)endMarker.c_str(), (int)endMarker.size(), 1, 0,
+       	100, 0, FDB_STREAMING_MODE_SMALL,
+       	0, 1, 0);
+    // need we free `value` ?
+    fdb_error_t err = waitError(getFuture);
+    if (err) {
+      op_ret = -1;
+      break;
+    }
+    const FDBKeyValue *outKv;
+    int outCount;
+    fdb_bool_t outMore = 1;
+    err = fdb_future_get_keyvalue_array(getFuture, &outKv, &outCount, &outMore);
+
+    for (int i=0; i<outCount; ++i) {
+      ldout(cct, 0) << "DEBUGLC: ListBucket result <" << i << "> " << string((char*)outKv->key, outKv->key_length) << dendl;
+      rgw_bucket_dir_entry ent;
+      ent.exists = true; 
+      ent.key.name = string((char*)outKv->key, outKv->key_length).substr(bucket_prefix_str.size());
+      result->push_back(ent);
+      ++outKv;
+    }
+
+    if (err) {
+      FDBFuture *f = fdb_transaction_on_error(tr, err);
+      fdb_error_t retryE = waitError(f);
+      fdb_future_destroy(f);
+      if (retryE) 
+      {
+	fdb_transaction_destroy(tr);
+	op_ret = -1;
+	break;
+      } else {
+	continue;
+      }
+    }
+    break;
+  }
+
+  fdb_transaction_destroy(tr);
+  if (!op_ret) 
+    return op_ret;
+  }
+
+
   int shard_id = target->get_shard_id();
 
   int count = 0;

@@ -1763,6 +1763,7 @@ void RGWGetObj::execute()
   }
   while(op_ret == 0) {
     FDBFuture *getFuture = fdb_transaction_get(tr, (const uint8_t*)fdb_key.c_str(), (int)fdb_key.size(), 0);
+    // need we free `value` ?
     fdb_error_t err = waitError(getFuture);
     if (err) {
       op_ret = -1;
@@ -2427,26 +2428,26 @@ void RGWStatBucket::execute()
 
 int RGWListBucket::verify_permission()
 {
-  op_ret = get_params();
-  if (op_ret < 0) {
-    return op_ret;
-  }
-  if (!prefix.empty())
-    s->env.emplace("s3:prefix", prefix);
+    op_ret = get_params();
+    if (op_ret < 0) {
+      return op_ret;
+    }
+    if (!prefix.empty())
+      s->env.emplace("s3:prefix", prefix);
 
-  if (!delimiter.empty())
-    s->env.emplace("s3:delimiter", delimiter);
+    if (!delimiter.empty())
+      s->env.emplace("s3:delimiter", delimiter);
 
-  s->env.emplace("s3:max-keys", std::to_string(max));
+    s->env.emplace("s3:max-keys", std::to_string(max));
 
-  if (!verify_bucket_permission(s,
-				list_versions ?
-				rgw::IAM::s3ListBucketVersions :
-				rgw::IAM::s3ListBucket)) {
-    return -EACCES;
-  }
+    if (!verify_bucket_permission(s,
+				  list_versions ?
+				  rgw::IAM::s3ListBucketVersions :
+				  rgw::IAM::s3ListBucket)) {
+      return -EACCES;
+    }
 
-  return 0;
+    return 0;
 }
 
 int RGWListBucket::parse_max_keys()
