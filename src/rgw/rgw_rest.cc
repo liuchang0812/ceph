@@ -1868,7 +1868,8 @@ int RGWHandler_REST::read_permissions(RGWOp* op_obj)
     return -EINVAL;
   }
 
-  return do_read_permissions(op_obj, only_bucket);
+  return 0;
+  // return do_read_permissions(op_obj, only_bucket);
 }
 
 void RGWRESTMgr::register_resource(string resource, RGWRESTMgr *mgr)

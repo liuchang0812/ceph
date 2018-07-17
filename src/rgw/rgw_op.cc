@@ -748,6 +748,8 @@ int retry_raced_bucket_write(RGWRados* g, req_state* s, const F& f) {
 
 int RGWGetObj::verify_permission()
 {
+  // skip permission 
+  return 0;
   obj = rgw_obj(s->bucket, s->object);
   store->set_atomic(s->obj_ctx, obj);
   if (get_data) {
@@ -1725,6 +1727,9 @@ static bool object_is_expired(map<string, bufferlist>& attrs) {
 
 void RGWGetObj::execute()
 {
+
+  obj = rgw_obj(s->bucket, s->object);
+
   bufferlist bl;
   gc_invalidate_time = ceph_clock_now();
   gc_invalidate_time += (s->cct->_conf->rgw_gc_obj_min_wait / 2);
@@ -1739,8 +1744,67 @@ void RGWGetObj::execute()
   map<string, bufferlist>::iterator attr_iter;
 
   perfcounter->inc(l_rgw_get);
+  
+  // hack here
+  string fdb_key = obj.get_fdb_key();
+  string fdb_prefix;
 
-  RGWRados::Object op_target(store, s->bucket_info, *static_cast<RGWObjectCtx *>(s->obj_ctx), obj);
+  ldpp_dout(this, 20) << "DEBUGLC: fdb_key: \"" << fdb_key << "\""<< dendl;
+
+  const uint8_t* value;
+  int value_len;
+
+
+  FDBTransaction *tr = nullptr;
+  fdb_error_t err = createTransaction(store->fdb_database, &tr, MAX_RETRY, MAX_TIMEOUT);
+
+  if (err) {
+    op_ret = -1;
+  }
+  while(op_ret == 0) {
+    FDBFuture *getFuture = fdb_transaction_get(tr, (const uint8_t*)fdb_key.c_str(), (int)fdb_key.size(), 0);
+    // need we free `value` ?
+    fdb_error_t err = waitError(getFuture);
+    if (err) {
+      op_ret = -1;
+      break;
+    }
+    int present;
+    err = fdb_future_get_value(getFuture, &present, &value, &value_len);
+    if (!err) {
+      if (present)
+	fdb_prefix = string((char*)value, value_len);
+      else {
+	op_ret = -1;
+	break;
+      }
+      fdb_future_destroy(getFuture);
+    }
+
+    if (err) {
+      FDBFuture *f = fdb_transaction_on_error(tr, err);
+      fdb_error_t retryE = waitError(f);
+      fdb_future_destroy(f);
+      if (retryE) 
+      {
+	fdb_transaction_destroy(tr);
+	op_ret = -1;
+	break;
+      } else {
+	continue;
+      }
+    }
+    break;
+  }
+
+  fdb_transaction_destroy(tr);
+
+  rgw_obj obj2(obj.bucket, obj.key);
+  obj2.key.name = obj2.key.name + '_' + fdb_prefix;
+
+  ldpp_dout(this, 20) << "DEBUGLC: obj1: " << obj << dendl;
+  ldpp_dout(this, 20) << "DEBUGLC: obj2: " << obj2 << dendl;
+  RGWRados::Object op_target(store, s->bucket_info, *static_cast<RGWObjectCtx *>(s->obj_ctx), obj2);
   RGWRados::Object::Read read_op(&op_target);
 
   op_ret = get_params();
@@ -2364,26 +2428,26 @@ void RGWStatBucket::execute()
 
 int RGWListBucket::verify_permission()
 {
-  op_ret = get_params();
-  if (op_ret < 0) {
-    return op_ret;
-  }
-  if (!prefix.empty())
-    s->env.emplace("s3:prefix", prefix);
+    op_ret = get_params();
+    if (op_ret < 0) {
+      return op_ret;
+    }
+    if (!prefix.empty())
+      s->env.emplace("s3:prefix", prefix);
 
-  if (!delimiter.empty())
-    s->env.emplace("s3:delimiter", delimiter);
+    if (!delimiter.empty())
+      s->env.emplace("s3:delimiter", delimiter);
 
-  s->env.emplace("s3:max-keys", std::to_string(max));
+    s->env.emplace("s3:max-keys", std::to_string(max));
 
-  if (!verify_bucket_permission(s,
-				list_versions ?
-				rgw::IAM::s3ListBucketVersions :
-				rgw::IAM::s3ListBucket)) {
-    return -EACCES;
-  }
+    if (!verify_bucket_permission(s,
+				  list_versions ?
+				  rgw::IAM::s3ListBucketVersions :
+				  rgw::IAM::s3ListBucket)) {
+      return -EACCES;
+    }
 
-  return 0;
+    return 0;
 }
 
 int RGWListBucket::parse_max_keys()

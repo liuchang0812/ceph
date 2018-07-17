@@ -27,6 +27,7 @@
 #include "rgw_period_puller.h"
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
+#include "rgw_fdb.h"
 
 class RGWWatcher;
 class SafeTimer;
@@ -466,6 +467,7 @@ public:
 
   void set_trivial_rule(uint64_t tail_ofs, uint64_t stripe_max_size) {
     RGWObjManifestRule rule(0, tail_ofs, 0, stripe_max_size);
+    rule.start_part_num = 1;
     rules[0] = rule;
     max_head_size = tail_ofs;
   }
@@ -2280,6 +2282,8 @@ class RGWRados : public AdminSocketHook
   int open_bucket_index(const RGWBucketInfo& bucket_info, librados::IoCtx& index_ctx,
                         map<int, string>& oids, map<int, T>& bucket_objs,
                         int shard_id = -1, map<int, string> *bucket_instance_ids = NULL);
+
+  int open_fdb();
   void build_bucket_index_marker(const string& shard_id_str, const string& shard_marker,
       string *marker);
 
@@ -2323,6 +2327,9 @@ class RGWRados : public AdminSocketHook
   friend class RGWWatcher;
 
   Mutex bucket_id_lock;
+
+  public:
+  FDBDatabase* fdb_database;
 
   // This field represents the number of bucket index object shards
   uint32_t bucket_index_max_shards;
@@ -2967,6 +2974,7 @@ public:
     class UpdateIndex {
       RGWRados::Bucket *target;
       string optag;
+      string obj_key;
       rgw_obj obj;
       uint16_t bilog_flags{0};
       BucketShard bs;
@@ -3013,6 +3021,14 @@ public:
       
       void set_zones_trace(rgw_zone_set *_zones_trace) {
         zones_trace = _zones_trace;
+      }
+
+      void set_obj_key(const string& key) {
+	obj_key = key;
+      }
+
+      string get_obj_key() {
+	return obj_key;
       }
 
       int prepare(RGWModifyOp, const string *write_tag);
@@ -4045,6 +4061,7 @@ class RGWPutObjProcessor_Atomic : public RGWPutObjProcessor_Aio
   bool versioned_object;
   uint64_t olh_epoch;
   string version_id;
+  rgw_obj writing_obj;
 
 protected:
   rgw_bucket bucket;
@@ -4085,7 +4102,7 @@ public:
                                 obj_str(_o),
                                 unique_tag(_t) {}
   int prepare(RGWRados *store, string *oid_rand) override;
-  virtual bool immutable_head() { return false; }
+  virtual bool immutable_head() { return true; }
   int handle_data(bufferlist& bl, off_t ofs, void **phandle, rgw_raw_obj *pobj, bool *again) override;
 
   void set_olh_epoch(uint64_t epoch) {

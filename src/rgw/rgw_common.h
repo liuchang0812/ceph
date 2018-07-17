@@ -1998,6 +1998,7 @@ WRITE_CLASS_ENCODER(RGWBucketEnt)
 struct rgw_obj {
   rgw_bucket bucket;
   rgw_obj_key key;
+  std::string prefix;
 
   bool in_extra_data{false}; /* in-memory only member, does not serialize */
 
@@ -2008,6 +2009,7 @@ struct rgw_obj {
   rgw_obj(const rgw_bucket& b, const std::string& name) : bucket(b), key(name) {}
   rgw_obj(const rgw_bucket& b, const rgw_obj_key& k) : bucket(b), key(k) {}
   rgw_obj(const rgw_bucket& b, const rgw_obj_index_key& k) : bucket(b), key(k) {}
+  
 
   void init(const rgw_bucket& b, const std::string& name) {
     bucket = b;
@@ -2034,6 +2036,10 @@ struct rgw_obj {
 
   string get_oid() const {
     return key.get_oid();
+  }
+
+  string get_fdb_key() const {
+    return "RGW_PREFIX_" + bucket.bucket_id + "_" + key.name;
   }
 
   const string& get_hash_object() const {
