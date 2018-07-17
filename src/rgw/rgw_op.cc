@@ -577,14 +577,28 @@ int rgw_build_object_policies(RGWRados *store, struct req_state *s,
     s->object_acl = ceph::make_unique<RGWAccessControlPolicy>(s->cct);
 
     rgw_obj obj(s->bucket, s->object);
-      
+
+    if (s->bucket_info.index_type == RGWBIType_FDB) {
+      std::string fdb_key = obj.get_fdb_head_key();
+      std::string fdb_value;
+      bool exist;
+      auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+      if (ret.res != 0)
+	return -ERR_FDB_ERROR;
+      else if (!exist) 
+	return -ERR_NOT_FOUND;
+      else {
+	rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+      }
+    }
+
     store->set_atomic(s->obj_ctx, obj);
     if (prefetch_data) {
       store->set_prefetch_data(s->obj_ctx, obj);
     }
     ret = read_obj_policy(store, s, s->bucket_info, s->bucket_attrs,
 			  s->object_acl.get(), s->iam_policy, s->bucket,
-                          s->object);
+                          obj.key);
   }
 
   return ret;
@@ -688,7 +702,26 @@ int retry_raced_bucket_write(RGWRados* g, req_state* s, const F& f) {
 
 int RGWGetObj::verify_permission()
 {
+
   obj = rgw_obj(s->bucket, s->object);
+
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    // read rgw_raw_obj and unmarshal
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      ldout(s->cct, 0) << "DEBUGLC: fdb op ret: " << ret.res<< dendl;
+    } else if (!exist) {
+      // 404 logic here
+      op_ret = ENOENT;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
+
   store->set_atomic(s->obj_ctx, obj);
   if (get_data) {
     store->set_prefetch_data(s->obj_ctx, obj);
@@ -707,6 +740,7 @@ int RGWGetObj::verify_permission()
       action = rgw::IAM::s3GetObjectVersion;
     }
   }
+
 
   if (!verify_object_permission(s, action)) {
     return -EACCES;
@@ -757,7 +791,22 @@ void RGWGetObjTags::execute()
   map<string,bufferlist> attrs;
 
   obj = rgw_obj(s->bucket, s->object);
-
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      op_ret = -ERR_FDB_ERROR;
+      return;
+    } else if (!exist) {
+      op_ret = -ERR_NOT_FOUND;
+      return;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
   store->set_atomic(s->obj_ctx, obj);
 
   op_ret = get_obj_attrs(store, s, obj, attrs);
@@ -798,6 +847,23 @@ void RGWPutObjTags::execute()
 
   rgw_obj obj;
   obj = rgw_obj(s->bucket, s->object);
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      op_ret = -ERR_FDB_ERROR;
+      return;
+    } else if (!exist) {
+      op_ret = -ERR_NOT_FOUND;
+      return;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
+ 
   store->set_atomic(s->obj_ctx, obj);
   op_ret = modify_obj_attr(store, s, obj, RGW_ATTR_TAGS, tags_bl);
   if (op_ret == -ECANCELED){
@@ -830,6 +896,23 @@ void RGWDeleteObjTags::execute()
 
   rgw_obj obj;
   obj = rgw_obj(s->bucket, s->object);
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      op_ret = -ERR_FDB_ERROR;
+      return;
+    } else if (!exist) {
+      op_ret = -ERR_NOT_FOUND;
+      return;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
+ 
   store->set_atomic(s->obj_ctx, obj);
   map <string, bufferlist> attrs;
   map <string, bufferlist> rmattr;
@@ -1654,10 +1737,32 @@ void RGWGetObj::execute()
   std::unique_ptr<RGWGetDataCB> decrypt;
   map<string, bufferlist>::iterator attr_iter;
 
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    // read rgw_raw_obj and unmarshal
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      ldout(s->cct, 0) << "DEBUGLC: fdb op ret: " << ret.res<< dendl;
+    } else if (!exist) {
+      // 404 logic here
+      op_ret = ENOENT;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
+ 
   perfcounter->inc(l_rgw_get);
-
+  ldout(s->cct, 0) << "DEBUGLC: now obj name: " << obj
+                   << dendl;
+  
   RGWRados::Object op_target(store, s->bucket_info, *static_cast<RGWObjectCtx *>(s->obj_ctx), obj);
   RGWRados::Object::Read read_op(&op_target);
+
+  if (op_ret < 0)
+    goto done_err;
 
   op_ret = get_params();
   if (op_ret < 0)
@@ -3324,6 +3429,8 @@ void RGWPutObj::execute()
   RGWPutObjProcessor *processor = NULL;
   RGWPutObjDataProcessor *filter = nullptr;
   std::unique_ptr<RGWPutObjDataProcessor> encrypt;
+
+  string oid_rand;
   char supplied_md5_bin[CEPH_CRYPTO_MD5_DIGESTSIZE + 1];
   char supplied_md5[CEPH_CRYPTO_MD5_DIGESTSIZE * 2 + 1];
   char calc_md5[CEPH_CRYPTO_MD5_DIGESTSIZE * 2 + 1];
@@ -3402,6 +3509,7 @@ void RGWPutObj::execute()
     supplied_md5[sizeof(supplied_md5) - 1] = '\0';
   }
 
+  ldout(s->cct, 0) << "DEBUGLC: bucket type " << s->bucket_info.index_type << dendl;
   processor = select_processor(*static_cast<RGWObjectCtx *>(s->obj_ctx), &multipart);
 
   // no filters by default
@@ -3419,7 +3527,11 @@ void RGWPutObj::execute()
     }
   }
 
-  op_ret = processor->prepare(store, NULL);
+  char buf[33];
+  gen_rand_alphanumeric(store->ctx(), buf, sizeof(buf) - 1);
+  oid_rand.append(buf);
+
+  op_ret = processor->prepare(store, &oid_rand);
   if (op_ret < 0) {
     ldout(s->cct, 20) << "processor->prepare() returned ret=" << op_ret
 		      << dendl;
@@ -4279,6 +4391,23 @@ void RGWDeleteObj::execute()
   }
 
   rgw_obj obj(s->bucket, s->object);
+
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+    std::string fdb_key = obj.get_fdb_head_key();
+    std::string fdb_value;
+    bool exist;
+    auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+    if (ret.res != 0) {
+      op_ret = -ERR_FDB_ERROR;
+      return;
+    } else if (!exist) {
+      return;
+    } else {
+      rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+    }
+  }
+
   map<string, bufferlist> attrs;
 
 
@@ -4850,6 +4979,23 @@ void RGWPutACLs::execute()
 
   if (!s->object.empty()) {
     obj = rgw_obj(s->bucket, s->object);
+    if (s->bucket_info.index_type == RGWBIType_FDB) {
+      ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+      std::string fdb_key = obj.get_fdb_head_key();
+      std::string fdb_value;
+      bool exist;
+      auto ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+      if (ret.res != 0) {
+	op_ret = -ERR_FDB_ERROR;
+	return;
+      } else if (!exist) {
+	op_ret = -ERR_NOT_FOUND;
+	return;
+      } else {
+	rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+      }
+    }
+   
     store->set_atomic(s->obj_ctx, obj);
     //if instance is empty, we should modify the latest object
     op_ret = modify_obj_attr(store, s, obj, RGW_ATTR_ACL, bl);
@@ -5603,7 +5749,12 @@ void RGWCompleteMultipart::execute()
     attrs[RGW_ATTR_COMPRESSION] = tmp;
   }
 
-  target_obj.init(s->bucket, s->object.name);
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    ldout(s->cct, 10) << "DEBUGLC: manifest's prefix is " << manifest.get_prefix() << dendl;
+    target_obj.init_ns(s->bucket, manifest.get_prefix(), string(RGW_OBJ_NS_HEAD));
+  } else {
+    target_obj.init(s->bucket, s->object.name);
+  }
   if (versioned_object) {
     store->gen_rand_obj_instance_name(&target_obj);
   }
@@ -5637,6 +5788,37 @@ void RGWCompleteMultipart::execute()
   } else {
       ldout(store->ctx(), 0) << "WARNING: failed to remove object "
 			     << meta_obj << dendl;
+  }
+
+  if (s->bucket_info.index_type == RGWBIType_FDB) {
+    rgw_obj no_prefix_obj;
+    no_prefix_obj.init(s->bucket, s->object.name);
+    rgw_raw_obj raw_obj;
+    store->obj_to_raw(s->bucket_info.placement_rule, target_obj, &raw_obj);
+
+    string fdb_key = no_prefix_obj.get_fdb_head_key();
+    string fdb_meta_key = no_prefix_obj.get_fdb_meta_key();
+    string fdb_prefix = target_obj.key.get_oid();
+
+    ldout(store->ctx(), 0) << "DEBUGLC: put fdb with [" << fdb_key <<  ", " << fdb_prefix << "]" << dendl;
+    //TODO(LC): use transaction here
+    rgw_bucket_dir_entry ent;
+    target_obj.key.get_index_key(&ent.key);
+    ent.meta.size = accounted_size;
+    ent.meta.accounted_size = accounted_size;
+    ent.meta.mtime = real_clock::now();
+    ent.meta.etag = etag;
+    ent.meta.owner = s->bucket_info.owner.to_str();
+
+    bufferlist in;
+    ::encode(ent, in);
+   
+    // fdb_put_key_value(store->fdb_database, fdb_meta_key, in.to_str());
+    // auto ret = fdb_put_key_value(store->fdb_database, fdb_key, fdb_prefix);
+    keyvalues kvs = {{fdb_meta_key, in.to_str()}, {fdb_key, fdb_prefix}};
+    auto ret = fdb_put_key_values(store->fdb_database, kvs);
+
+    op_ret = ret.res;
   }
 }
 
@@ -5970,6 +6152,22 @@ bool RGWBulkDelete::Deleter::delete_single(const acct_path_t& path)
 
   if (!path.obj_key.empty()) {
     rgw_obj obj(binfo.bucket, path.obj_key);
+    if (s->bucket_info.index_type == RGWBIType_FDB) {
+      ldout(s->cct, 0) << "DEBUGLC: try to get real obj in fdb " << obj.get_fdb_head_key() << dendl;
+      std::string fdb_key = obj.get_fdb_head_key();
+      std::string fdb_value;
+      bool exist;
+      auto fdb_ret = fdb_get_key_value(store->fdb_database, fdb_key, fdb_value, exist);
+      if (fdb_ret.res != 0) {
+	ret = -ERR_FDB_ERROR;
+	goto delop_fail;
+      } else if (!exist) {
+      	ldout(s->cct, 0) << "DEBUGLC: no such object" << dendl;
+      } else {
+	rgw_obj_key::parse_raw_oid(fdb_value, &obj.key);
+      }
+    }
+   
     obj_ctx.obj.set_atomic(obj);
 
     RGWRados::Object del_target(store, binfo, obj_ctx, obj);
@@ -6881,7 +7079,7 @@ int RGWHandler::do_read_permissions(RGWOp *op, bool only_bucket)
     if (ret == -ENODATA)
       ret = -EACCES;
   }
-
+  return 0; // hook here
   return ret;
 }
 

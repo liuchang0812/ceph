@@ -209,6 +209,7 @@ protected:
   bool skip_manifest;
   bool skip_decrypt{false};
   rgw_obj obj;
+  rgw_obj fdb_head_obj;
   utime_t gc_invalidate_time;
   bool is_slo;
   string lo_etag;

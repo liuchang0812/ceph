@@ -115,6 +115,7 @@ rgw_http_errors rgw_http_s3_errors({
     { ERR_NOT_IMPLEMENTED, {501, "NotImplemented" }},
     { ERR_SERVICE_UNAVAILABLE, {503, "ServiceUnavailable"}},
     { ERR_ZERO_IN_URL, {400, "InvalidRequest" }},
+    { ERR_FDB_ERROR, {500, "InternalError"}},
 });
 
 rgw_http_errors rgw_http_swift_errors({

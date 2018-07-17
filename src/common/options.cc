@@ -5670,6 +5670,10 @@ std::vector<Option> get_rgw_options() {
 			  "of RGW instances under heavy use. If you would like "
 			  "to turn off cache expiry, set this value to zero."),
 
+    Option("rgw_use_fdb", Option::TYPE_BOOL, Option::LEVEL_ADVANCED)
+    .set_default(true)
+    .set_description("use fdb as index or not"),
+
   });
 }
 

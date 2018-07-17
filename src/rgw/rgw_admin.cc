@@ -88,6 +88,8 @@ void usage()
   cout << "  bucket reshard             reshard bucket\n";
   cout << "  bucket sync disable        disable bucket sync\n";
   cout << "  bucket sync enable         enable bucket sync\n";
+  cout << "  bucket unindex             unindex bucket\n";
+  cout << "  bucket fdbindex            use fdb as bucket index\n";
   cout << "  bi get                     retrieve bucket index object entries\n";
   cout << "  bi put                     store bucket index object entries\n";
   cout << "  bi list                    list raw bucket index entries\n";
@@ -360,6 +362,8 @@ enum {
   OPT_BUCKET_UNLINK,
   OPT_BUCKET_STATS,
   OPT_BUCKET_CHECK,
+  OPT_BUCKET_UNINDEX,
+  OPT_BUCKET_FDBINDEX,
   OPT_BUCKET_SYNC_STATUS,
   OPT_BUCKET_SYNC_MARKERS,
   OPT_BUCKET_SYNC_INIT,
@@ -613,6 +617,10 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_BUCKET_RESHARD;
     if (strcmp(cmd, "check") == 0)
       return OPT_BUCKET_CHECK;
+    if (strcmp(cmd, "unindex") == 0)
+      return OPT_BUCKET_UNINDEX;
+    if (strcmp(cmd, "fdbindex") == 0)
+      return OPT_BUCKET_FDBINDEX;
     if (strcmp(cmd, "sync") == 0) {
       *need_more = true;
       return 0;
@@ -1248,6 +1256,104 @@ void set_quota_info(RGWQuotaInfo& quota, int opt_cmd, int64_t max_size, int64_t 
       quota.enabled = false;
       break;
   }
+}
+
+int switch_bucket_to_indexless(RGWRados *store, RGWBucketAdminOpState& bucket_op,
+                               const string& tenant, const string& bucket_name)
+{
+  rgw_bucket bucket;
+  string bucket_id;
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> attrs;
+  int ret = init_bucket(tenant, bucket_name, bucket_id, bucket_info, bucket, &attrs);
+  if (ret < 0) {
+    cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+  /*if (bucket_info.index_type == RGWBIType_Indexless) {
+    cerr << "WARNING: bucket " << bucket_name << " was already indexless" << std::endl;
+    return 0;
+  }*/
+
+  RGWBucketInfo new_bucket_info(bucket_info);
+  store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
+  new_bucket_info.bucket.oid.clear();
+  new_bucket_info.index_type = RGWBIType_Indexless;
+  new_bucket_info.objv_tracker.clear();
+
+  cout << "*** NOTICE: operation will not remove old bucket index objects ***" << std::endl;
+  cout << "***         these will need to be removed manually             ***" << std::endl;
+  cout << "old bucket instance id: " << bucket_info.bucket.bucket_id << std::endl;
+  cout << "new bucket instance id: " << new_bucket_info.bucket.bucket_id << std::endl;
+
+  ret = store->init_bucket_index(new_bucket_info, new_bucket_info.num_shards);
+  if (ret < 0) {
+    cerr << "ERROR: failed to init new bucket indexes: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+
+  ret = store->put_bucket_instance_info(new_bucket_info, true, real_time(), &attrs);
+  if (ret < 0) {
+    cerr << "ERROR: failed to store new bucket instance info: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+
+  bucket_op.set_bucket_id(new_bucket_info.bucket.bucket_id);
+  bucket_op.set_user_id(new_bucket_info.owner);
+  string err;
+  int r = RGWBucketAdminOp::link(store, bucket_op, &err);
+  if (r < 0) {
+    cerr << "failed to link new bucket instance (bucket_id=" << new_bucket_info.bucket.bucket_id << ": " << err << "; " << cpp_strerror(-r) << std::endl;
+    return -r;
+  }
+  return 0;
+}
+
+int switch_bucket_to_fdbindex(RGWRados *store, RGWBucketAdminOpState& bucket_op,
+                               const string& tenant, const string& bucket_name)
+{
+  rgw_bucket bucket;
+  string bucket_id;
+  RGWBucketInfo bucket_info;
+  map<string, bufferlist> attrs;
+  int ret = init_bucket(tenant, bucket_name, bucket_id, bucket_info, bucket, &attrs);
+  if (ret < 0) {
+    cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+
+  RGWBucketInfo new_bucket_info(bucket_info);
+  store->create_bucket_id(&new_bucket_info.bucket.bucket_id);
+  new_bucket_info.bucket.oid.clear();
+  new_bucket_info.index_type = RGWBIType_FDB;
+  new_bucket_info.objv_tracker.clear();
+
+  cout << "*** NOTICE: operation will not remove old bucket index objects ***" << std::endl;
+  cout << "***         these will need to be removed manually             ***" << std::endl;
+  cout << "old bucket instance id: " << bucket_info.bucket.bucket_id << std::endl;
+  cout << "new bucket instance id: " << new_bucket_info.bucket.bucket_id << std::endl;
+
+  ret = store->init_bucket_index(new_bucket_info, new_bucket_info.num_shards);
+  if (ret < 0) {
+    cerr << "ERROR: failed to init new bucket indexes: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+
+  ret = store->put_bucket_instance_info(new_bucket_info, true, real_time(), &attrs);
+  if (ret < 0) {
+    cerr << "ERROR: failed to store new bucket instance info: " << cpp_strerror(-ret) << std::endl;
+    return -ret;
+  }
+
+  bucket_op.set_bucket_id(new_bucket_info.bucket.bucket_id);
+  bucket_op.set_user_id(new_bucket_info.owner);
+  string err;
+  int r = RGWBucketAdminOp::link(store, bucket_op, &err);
+  if (r < 0) {
+    cerr << "failed to link new bucket instance (bucket_id=" << new_bucket_info.bucket.bucket_id << ": " << err << "; " << cpp_strerror(-r) << std::endl;
+    return -r;
+  }
+  return 0;
 }
 
 int set_bucket_quota(RGWRados *store, int opt_cmd,
@@ -2539,6 +2645,9 @@ int main(int argc, const char **argv)
   }
 
   common_init_finish(g_ceph_context);
+  
+  if (g_conf->get_val<bool>("rgw_use_fdb")) 
+    fdb_global_init();
 
   rgw_user user_id;
   string tenant;
@@ -6159,6 +6268,22 @@ next:
     } else {
       RGWBucketAdminOp::check_index(store, bucket_op, f);
     }
+  }
+
+  if (opt_cmd == OPT_BUCKET_UNINDEX) {
+    if (bucket_name.empty()) {
+      cerr << "ERROR: bucket name is required for unindex operation" << std::endl;
+      return EINVAL;
+    }
+    switch_bucket_to_indexless(store, bucket_op, tenant, bucket_name);
+  }
+
+  if (opt_cmd == OPT_BUCKET_FDBINDEX) {
+    if (bucket_name.empty()) {
+      cerr << "ERROR: bucket name is required for unindex operation" << std::endl;
+      return EINVAL;
+    }
+    switch_bucket_to_fdbindex(store, bucket_op, tenant, bucket_name);
   }
 
   if (opt_cmd == OPT_BUCKET_RM) {

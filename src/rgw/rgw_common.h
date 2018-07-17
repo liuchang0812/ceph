@@ -41,6 +41,9 @@ namespace ceph {
 using ceph::crypto::MD5;
 
 
+#define RGW_FDB_HEAD_PREFIX "rgw_head_id."
+#define RGW_FDB_META_PREFIX "rgw_meta_id."
+
 #define RGW_ATTR_PREFIX  "user.rgw."
 
 #define RGW_HTTP_RGWX_ATTR_PREFIX "RGWX_ATTR_"
@@ -220,6 +223,9 @@ using ceph::crypto::MD5;
 #define ERR_INVALID_ENCRYPTION_ALGORITHM                 2214
 
 #define ERR_BUSY_RESHARDING      2300
+
+
+#define ERR_FDB_ERROR 2400
 
 #ifndef UINT32_MAX
 #define UINT32_MAX (0xffffffffu)
@@ -1172,6 +1178,7 @@ enum RGWBucketFlags {
 enum RGWBucketIndexType {
   RGWBIType_Normal = 0,
   RGWBIType_Indexless = 1,
+  RGWBIType_FDB = 2,
 };
 
 inline ostream& operator<<(ostream& out, const RGWBucketIndexType &index_type) 
@@ -1181,6 +1188,8 @@ inline ostream& operator<<(ostream& out, const RGWBucketIndexType &index_type)
       return out << "Normal";
     case RGWBIType_Indexless:
       return out << "Indexless";
+    case RGWBIType_FDB:
+      return out << "IndexFDB";
     default:
       return out << "Unknown";
   }
@@ -1997,6 +2006,14 @@ struct rgw_obj {
 
   string get_oid() const {
     return key.get_oid();
+  }
+
+  string get_fdb_head_key() const {
+    return RGW_FDB_HEAD_PREFIX + bucket.bucket_id + "_" + key.name;
+  }
+
+  string get_fdb_meta_key() const {
+    return RGW_FDB_META_PREFIX + bucket.bucket_id + "_" + key.name;
   }
 
   const string& get_hash_object() const {

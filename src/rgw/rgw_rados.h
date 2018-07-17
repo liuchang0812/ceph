@@ -25,6 +25,7 @@
 #include "rgw_period_puller.h"
 #include "rgw_sync_module.h"
 #include "rgw_sync_log_trim.h"
+#include "rgw_fdb.h"
 
 class RGWWatcher;
 class SafeTimer;
@@ -50,6 +51,7 @@ class RGWReshardWait;
 
 #define RGW_OBJ_NS_MULTIPART "multipart"
 #define RGW_OBJ_NS_SHADOW    "shadow"
+#define RGW_OBJ_NS_HEAD      "head"
 
 #define RGW_BUCKET_INSTANCE_MD_PREFIX ".bucket.meta."
 
@@ -475,6 +477,13 @@ public:
   }
 
   void get_implicit_location(uint64_t cur_part_id, uint64_t cur_stripe, uint64_t ofs, string *override_prefix, rgw_obj_select *location);
+
+  void set_fdb_rule(uint64_t tail_ofs, uint64_t stripe_max_size) {
+    RGWObjManifestRule rule(0, tail_ofs, 0, stripe_max_size);
+    rule.start_part_num = 1;
+    rules[0] = rule;
+    max_head_size = 0;
+  }
 
   void set_trivial_rule(uint64_t tail_ofs, uint64_t stripe_max_size) {
     RGWObjManifestRule rule(0, tail_ofs, 0, stripe_max_size);
@@ -2256,6 +2265,8 @@ class RGWRados : public AdminSocketHook
   int open_bucket_index(const RGWBucketInfo& bucket_info, librados::IoCtx& index_ctx,
                         map<int, string>& oids, map<int, T>& bucket_objs,
                         int shard_id = -1, map<int, string> *bucket_instance_ids = NULL);
+
+  int open_fdb();
   void build_bucket_index_marker(const string& shard_id_str, const string& shard_marker,
       string *marker);
 
@@ -2298,6 +2309,9 @@ class RGWRados : public AdminSocketHook
   friend class RGWWatcher;
 
   Mutex bucket_id_lock;
+
+public:
+  FDBDatabase* fdb_database;
 
   // This field represents the number of bucket index object shards
   uint32_t bucket_index_max_shards;
@@ -2960,7 +2974,7 @@ public:
 
       UpdateIndex(RGWRados::Bucket *_target, const rgw_obj& _obj) : target(_target), obj(_obj),
                                                               bs(target->get_store()) {
-                                                                blind = (target->get_bucket_info().index_type == RGWBIType_Indexless);
+                                                                blind = (target->get_bucket_info().index_type == RGWBIType_Indexless) || (target->get_bucket_info().index_type == RGWBIType_FDB) ;
                                                               }
 
       int get_bucket_shard(BucketShard **pbs) {
@@ -4038,7 +4052,13 @@ public:
                                 obj_str(_o),
                                 unique_tag(_t) {}
   int prepare(RGWRados *store, string *oid_rand) override;
-  virtual bool immutable_head() { return false; }
+  virtual bool immutable_head() {
+    return false;
+    if (bucket_info.index_type == RGWBIType_FDB)
+      return true;
+    else 
+    return false;
+  }
   int handle_data(bufferlist& bl, off_t ofs, void **phandle, rgw_raw_obj *pobj, bool *again) override;
 
   void set_olh_epoch(uint64_t epoch) {

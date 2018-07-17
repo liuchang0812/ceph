@@ -81,6 +81,7 @@ int rgw_process_authenticated(RGWHandler_REST * const handler,
 
   req->log(s, "verifying op permissions");
   ret = op->verify_permission();
+  dout(2) << "debuglc: verify_permission ret code " << ret << dendl;
   if (ret < 0) {
     if (s->system_request) {
       dout(2) << "overriding permissions due to system operation" << dendl;

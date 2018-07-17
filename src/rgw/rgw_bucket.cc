@@ -1401,6 +1401,18 @@ int RGWBucketAdminOp::remove_object(RGWRados *store, RGWBucketAdminOpState& op_s
   return bucket.remove_object(op_state);
 }
 
+static void dump_placement_index_type(RGWBucketIndexType index_type, Formatter *formatter)
+{
+  string index_type_name;
+  switch(index_type) {
+    case RGWBIType_Normal: index_type_name="Normal"; break;
+    case RGWBIType_Indexless: index_type_name="Indexless"; break;
+    case RGWBIType_FDB: index_type_name="FDBIndex"; break;
+    default: index_type_name="Unknown";
+  }
+   formatter->dump_string("index_type", index_type_name);
+}
+
 static int bucket_stats(RGWRados *store, const std::string& tenant_name, std::string&  bucket_name, Formatter *formatter)
 {
   RGWBucketInfo bucket_info;

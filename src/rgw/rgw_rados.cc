@@ -28,6 +28,7 @@
 #include "rgw_rest_conn.h"
 #include "rgw_cr_rados.h"
 #include "rgw_cr_rest.h"
+#include "rgw_fdb.h"
 
 #include "cls/rgw/cls_rgw_ops.h"
 #include "cls/rgw/cls_rgw_types.h"
@@ -2668,9 +2669,29 @@ int RGWPutObjProcessor_Atomic::prepare(RGWRados *store, string *oid_rand)
     store->gen_rand_obj_instance_name(&head_obj);
   }
 
-  manifest.set_trivial_rule(max_chunk_size, store->ctx()->_conf->rgw_obj_stripe_size);
+  manifest.set_prefix(obj_str + *oid_rand);
+  // if fdb, use part_num 1
+  /*
+  manifest.set_trivial_rule(max_chunk_size, store->ctx()->_conf->rgw_obj_stripe_size, 1);
+  manifest.set_max_head_size(0);
+  manifest.set_head_size(0);
+  */
 
-  r = manifest_gen.create_begin(store->ctx(), &manifest, bucket_info.placement_rule, head_obj.bucket, head_obj);
+  if (bucket_info.index_type == RGWBIType_FDB) {
+    manifest.set_fdb_rule(max_chunk_size, store->ctx()->_conf->rgw_obj_stripe_size);
+ 
+    r = manifest_gen.create_begin(store->ctx(), &manifest, bucket_info.placement_rule, head_obj.bucket, head_obj);
+
+    cur_obj = manifest_gen.get_cur_obj(store);
+    ldout(store->ctx(), 0) << "DEBUGLC: cur_obj " << cur_obj << " head_obj " << head_obj  << dendl;
+    // rgw_raw_obj_to_obj(bucket, cur_obj, &head_obj);
+    // head_obj.key.name += "_head";
+    // head_obj.key.ns = RGW_OBJ_NS_HEAD;
+    head_obj.init_ns(bucket, manifest.get_prefix(), RGW_OBJ_NS_HEAD);
+  } else {
+    manifest.set_trivial_rule(max_chunk_size, store->ctx()->_conf->rgw_obj_stripe_size);
+    r = manifest_gen.create_begin(store->ctx(), &manifest, bucket_info.placement_rule, head_obj.bucket, head_obj);
+  }
   if (r < 0) {
     return r;
   }
@@ -2796,6 +2817,36 @@ int RGWPutObjProcessor_Atomic::do_complete(size_t accounted_size, const string& 
 
   canceled = obj_op.meta.canceled;
 
+  // update fdb here
+  if (bucket_info.index_type == RGWBIType_FDB) {
+    rgw_obj target_obj;
+    target_obj.init(bucket, obj_str);
+    rgw_raw_obj raw_obj;
+    store->obj_to_raw(bucket_info.placement_rule, head_obj, &raw_obj);
+
+    string fdb_key = target_obj.get_fdb_head_key();
+    string fdb_meta_key = target_obj.get_fdb_meta_key();
+    string fdb_prefix = head_obj.key.get_oid();
+    ldout(store->ctx(), 0) << "DEBUGLC: put fdb with [" << fdb_key <<  ", " << fdb_prefix << "]" << dendl;
+    // TODO(LC): use transaction here
+    rgw_bucket_dir_entry ent;
+    target_obj.key.get_index_key(&ent.key);
+    ent.meta.size = accounted_size;
+    ent.meta.accounted_size = accounted_size;
+    ent.meta.mtime = *mtime;
+    ent.meta.etag = etag;
+    ent.meta.owner = bucket_info.owner.to_str();
+
+    bufferlist in;
+    ::encode(ent, in);
+    // fdb_put_key_value(store->fdb_database, fdb_meta_key, in.to_str());
+    // auto ret = fdb_put_key_value(store->fdb_database, fdb_key, fdb_prefix);
+
+    keyvalues kvs = {{fdb_meta_key, in.to_str()}, {fdb_key, fdb_prefix}};
+    auto ret = fdb_put_key_values(store->fdb_database, kvs);
+
+    return ret.res;
+  }
   return 0;
 }
 
@@ -3696,6 +3747,12 @@ bool RGWIndexCompletionManager::handle_completion(completion_t cb, complete_op_d
 
 void RGWRados::finalize()
 {
+
+  // close fdb here
+  if (fdb_database != nullptr) {
+    fdb_database_destroy(fdb_database);
+  }
+
   auto admin_socket = cct->get_admin_socket();
   for (auto cmd : admin_commands) {
     int r = admin_socket->unregister_command(cmd[0]);
@@ -4680,6 +4737,13 @@ int RGWRados::initialize()
   ret = init_rados();
   if (ret < 0)
     return ret;
+  if (cct->_conf->get_val<bool>("rgw_use_fdb")) {
+    ret = open_fdb();
+    if (ret)
+    {
+      return ret;
+    }
+  }
 
   return init_complete();
 }
@@ -5597,157 +5661,255 @@ int RGWRados::Bucket::List::list_objects_ordered(int64_t max,
 {
   RGWRados *store = target->get_store();
   CephContext *cct = store->ctx();
-  int shard_id = target->get_shard_id();
-
   int count = 0;
   bool truncated = true;
-  int read_ahead = std::max(cct->_conf->rgw_list_bucket_min_readahead,max);
+ 
+  if (target->get_bucket_info().index_type == RGWBIType_FDB) {
+    result->clear();
+    string bucket_id = target->bucket.bucket_id;
+    string const_str = RGW_FDB_META_PREFIX + bucket_id + "_";
+    string marker_str = const_str + params.marker.name;
+    string prefix_str = const_str + params.prefix;
+    string delim_str = params.delim.empty() ? "/" : params.delim;    
 
-  result->clear();
-
-  rgw_obj_key marker_obj(params.marker.name, params.marker.instance, params.ns);
-  rgw_obj_index_key cur_marker;
-  marker_obj.get_index_key(&cur_marker);
-
-  rgw_obj_key end_marker_obj(params.end_marker.name, params.end_marker.instance,
-                             params.ns);
-  rgw_obj_index_key cur_end_marker;
-  end_marker_obj.get_index_key(&cur_end_marker);
-  const bool cur_end_marker_valid = !params.end_marker.empty();
-
-  rgw_obj_key prefix_obj(params.prefix);
-  prefix_obj.ns = params.ns;
-  string cur_prefix = prefix_obj.get_index_key_name();
-
-  string bigger_than_delim;
-
-  if (!params.delim.empty()) {
-    unsigned long val = decode_utf8((unsigned char *)params.delim.c_str(),
-				    params.delim.size());
-    char buf[params.delim.size() + 16];
+    string bigger_than_delim;
+    unsigned long val = decode_utf8((unsigned char *)delim_str.c_str(), delim_str.size());
+    char buf[delim_str.size() + 16];
     int r = encode_utf8(val + 1, (unsigned char *)buf);
     if (r < 0) {
       ldout(cct,0) << "ERROR: encode_utf8() failed" << dendl;
       return -EINVAL;
     }
     buf[r] = '\0';
-
     bigger_than_delim = buf;
 
-    /* if marker points at a common prefix, fast forward it into its upperbound string */
-    int delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
-    if (delim_pos >= 0) {
-      string s = cur_marker.name.substr(0, delim_pos);
-      s.append(bigger_than_delim);
-      cur_marker = s;
+    if (!boost::algorithm::starts_with(marker_str, prefix_str)) {
+      if (marker_str < prefix_str) {
+        marker_str = prefix_str;
+      }
     }
-  }
 
-  string skip_after_delim;
-  while (truncated && count <= max) {
-    if (skip_after_delim > cur_marker.name) {
-      cur_marker = skip_after_delim;
-      ldout(cct, 20) << "setting cur_marker=" << cur_marker.name << "[" << cur_marker.instance << "]" << dendl;
-    }
-    std::map<string, rgw_bucket_dir_entry> ent_map;
-    int r = store->cls_bucket_list_ordered(target->get_bucket_info(),
-					   shard_id,
-					   cur_marker,
-					   cur_prefix,
-					   read_ahead + 1 - count,
-					   params.list_versions,
-					   ent_map,
-					   &truncated,
-					   &cur_marker);
-    if (r < 0)
-      return r;
+    std::string endMarker = prefix_str.substr(0, prefix_str.size() - 1) +
+                            char(prefix_str[prefix_str.size() - 1] + 1);
 
-    for (auto eiter = ent_map.begin(); eiter != ent_map.end(); ++eiter) {
-      rgw_bucket_dir_entry& entry = eiter->second;
-      rgw_obj_index_key index_key = entry.key;
+    std::string skip_after_delim;
+    std::string cur_marker;
 
-      rgw_obj_key obj(index_key);
-
-      /* note that parse_raw_oid() here will not set the correct
-       * object's instance, as rgw_obj_index_key encodes that
-       * separately. We don't need to set the instance because it's
-       * not needed for the checks here and we end up using the raw
-       * entry for the return vector
-       */
-      bool valid = rgw_obj_key::parse_raw_oid(index_key.name, &obj);
-      if (!valid) {
-        ldout(cct, 0) << "ERROR: could not parse object name: " << obj.name << dendl;
-        continue;
+    while (truncated && count <= max) {
+      if (skip_after_delim > marker_str) {
+        marker_str = skip_after_delim;
+        ldout(cct, 20) << " setting marker_str= " << marker_str << dendl;
       }
-      bool check_ns = (obj.ns == params.ns);
-      if (!params.list_versions && !entry.is_visible()) {
-        continue;
-      }
+      keyvalues kvs;
+      ldout(cct, 20) << "TESTLV2 " << marker_str << dendl;
+      auto err = fdb_list_key_value(store->fdb_database, marker_str, endMarker,
+          max, kvs, truncated);
+      ldout(cct, 20) << "ListBucket: fdb returns " << err.res << " and " << err.e
+        << " truncated: " << truncated << " size: " << kvs.size() << dendl;
 
-      if (params.enforce_ns && !check_ns) {
-        if (!params.ns.empty()) {
-          /* we've iterated past the namespace we're searching -- done now */
-          truncated = false;
-          goto done;
-        }
+      if (err.res != 0)
+        return err.res;
 
-        /* we're not looking at the namespace this object is in, next! */
-        continue;
-      }
-
-      if (cur_end_marker_valid && cur_end_marker <= index_key) {
+      if (kvs.size() == 0) {
         truncated = false;
         goto done;
       }
 
-      if (count < max) {
-        params.marker = index_key;
-        next_marker = index_key;
-      }
-
-      if (params.filter && !params.filter->filter(obj.name, index_key.name))
-        continue;
-
-      if (params.prefix.size() &&
-	  (obj.name.compare(0, params.prefix.size(), params.prefix) != 0))
-        continue;
-
-      if (!params.delim.empty()) {
-        int delim_pos = obj.name.find(params.delim, params.prefix.size());
-
+      cur_marker = kvs[kvs.size()-1].first;
+      for (auto &&kv : kvs) {
+        ldout(cct, 0) << "TESTLV1 " << kv.first << dendl;
+        std::string obj_name = kv.first.substr(const_str.size());
+        int delim_pos = obj_name.find(delim_str, params.prefix.size());
         if (delim_pos >= 0) {
-          string prefix_key = obj.name.substr(0, delim_pos + 1);
+          string prefix_key = obj_name.substr(0, delim_pos+1);
 
-          if (common_prefixes &&
-              common_prefixes->find(prefix_key) == common_prefixes->end()) {
+          if (common_prefixes && common_prefixes->find(prefix_key) == common_prefixes->end()) {
             if (count >= max) {
               truncated = true;
               goto done;
             }
-            next_marker = prefix_key;
+
             (*common_prefixes)[prefix_key] = true;
-
-            int marker_delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
-
-            skip_after_delim = cur_marker.name.substr(0, marker_delim_pos);
+            int marker_delim_pos = cur_marker.find(delim_str, prefix_str.size());
+            skip_after_delim = cur_marker.substr(0, marker_delim_pos);
             skip_after_delim.append(bigger_than_delim);
 
-            ldout(cct, 20) << "skip_after_delim=" << skip_after_delim << dendl;
+            ldout(cct, 20) << "skip_after_delim = " << skip_after_delim << dendl;
 
             count++;
           }
 
+          if (count >= max) {
+            truncated = true;
+            goto done;
+          }
           continue;
         }
+
+        rgw_bucket_dir_entry ent;
+        bufferlist out;
+        ceph::buffer::list::iterator p = out.begin();
+        out.append(kv.second);
+        ent.decode(p);
+        ent.exists = true;
+        ent.key.name = obj_name;
+        result->emplace_back(std::move(ent));
+        count++;
+      }
+    }
+  } else {
+
+    int shard_id = target->get_shard_id();
+
+   int read_ahead = std::max(cct->_conf->rgw_list_bucket_min_readahead,max);
+
+    result->clear();
+
+    rgw_obj_key marker_obj(params.marker.name, params.marker.instance, params.ns);
+    rgw_obj_index_key cur_marker;
+    marker_obj.get_index_key(&cur_marker);
+
+    rgw_obj_key end_marker_obj(params.end_marker.name, params.end_marker.instance,
+			       params.ns);
+    rgw_obj_index_key cur_end_marker;
+    end_marker_obj.get_index_key(&cur_end_marker);
+    const bool cur_end_marker_valid = !params.end_marker.empty();
+
+    rgw_obj_key prefix_obj(params.prefix);
+    prefix_obj.ns = params.ns;
+    string cur_prefix = prefix_obj.get_index_key_name();
+
+    string bigger_than_delim;
+
+    if (!params.delim.empty()) {
+      unsigned long val = decode_utf8((unsigned char *)params.delim.c_str(), params.delim.size());
+      char buf[params.delim.size() + 16];
+      int r = encode_utf8(val + 1, (unsigned char *)buf);
+      if (r < 0) {
+	ldout(cct,0) << "ERROR: encode_utf8() failed" << dendl;
+	return -EINVAL;
+      }
+      buf[r] = '\0';
+
+      bigger_than_delim = buf;
+
+      /* if marker points at a common prefix, fast forward it into its upperbound string */
+      int delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
+      if (delim_pos >= 0) {
+	string s = cur_marker.name.substr(0, delim_pos);
+	s.append(bigger_than_delim);
+	cur_marker = s;
+      }
+    }
+    
+    string skip_after_delim;
+    while (truncated && count <= max) {
+      if (skip_after_delim > cur_marker.name) {
+	cur_marker = skip_after_delim;
+	ldout(cct, 20) << "setting cur_marker=" << cur_marker.name << "[" << cur_marker.instance << "]" << dendl;
+      }
+      std::map<string, rgw_bucket_dir_entry> ent_map;
+      int r = store->cls_bucket_list_ordered(target->get_bucket_info(),
+					     shard_id,
+					     cur_marker,
+					     cur_prefix,
+					     read_ahead + 1 - count,
+					     params.list_versions,
+					     ent_map,
+					     &truncated,
+					     &cur_marker);
+      if (r < 0)
+	return r;
+
+      std::map<string, rgw_bucket_dir_entry>::iterator eiter;
+      for (eiter = ent_map.begin(); eiter != ent_map.end(); ++eiter) {
+	rgw_bucket_dir_entry& entry = eiter->second;
+	rgw_obj_index_key index_key = entry.key;
+
+	rgw_obj_key obj(index_key);
+
+	/* note that parse_raw_oid() here will not set the correct object's instance, as
+	 * rgw_obj_index_key encodes that separately. We don't need to set the instance because it's
+	 * not needed for the checks here and we end up using the raw entry for the return vector
+	 */
+	bool valid = rgw_obj_key::parse_raw_oid(index_key.name, &obj);
+	if (!valid) {
+	  ldout(cct, 0) << "ERROR: could not parse object name: " << obj.name << dendl;
+	  continue;
+	}
+	bool check_ns = (obj.ns == params.ns);
+	if (!params.list_versions && !entry.is_visible()) {
+	  continue;
+	}
+
+	if (params.enforce_ns && !check_ns) {
+	  if (!params.ns.empty()) {
+	    /* we've iterated past the namespace we're searching -- done now */
+	    truncated = false;
+	    goto done;
+	  }
+
+	  /* we're not looking at the namespace this object is in, next! */
+	  continue;
+	}
+
+	if (cur_end_marker_valid && cur_end_marker <= index_key) {
+	  truncated = false;
+	  goto done;
+	}
+
+	if (count < max) {
+	  params.marker = index_key;
+	  next_marker = index_key;
+	}
+
+	if (params.filter && !params.filter->filter(obj.name, index_key.name))
+	  continue;
+
+	if (params.prefix.size() &&  (obj.name.compare(0, params.prefix.size(), params.prefix) != 0))
+	  continue;
+
+	if (!params.delim.empty()) {
+	  int delim_pos = obj.name.find(params.delim, params.prefix.size());
+
+	  if (delim_pos >= 0) {
+	    string prefix_key = obj.name.substr(0, delim_pos + 1);
+
+	    if (common_prefixes &&
+		common_prefixes->find(prefix_key) == common_prefixes->end()) {
+	      if (count >= max) {
+		truncated = true;
+		goto done;
+	      }
+	      next_marker = prefix_key;
+	      (*common_prefixes)[prefix_key] = true;
+
+	      int marker_delim_pos = cur_marker.name.find(params.delim, cur_prefix.size());
+
+	      skip_after_delim = cur_marker.name.substr(0, marker_delim_pos);
+	      skip_after_delim.append(bigger_than_delim);
+
+	      ldout(cct, 20) << "skip_after_delim=" << skip_after_delim << dendl;
+
+	      count++;
+	    }
+
+	    continue;
+	  }
+	}
+
+	if (count >= max) {
+	  truncated = true;
+	  goto done;
+	}
+
+	result->emplace_back(std::move(entry));
+	count++;
       }
 
-      if (count >= max) {
-        truncated = true;
-        goto done;
-      }
-
-      result->emplace_back(std::move(entry));
-      count++;
+      // Either the back-end telling us truncated, or we don't consume all
+      // items returned per the amount caller request
+      truncated = (truncated || eiter != ent_map.end());
     }
   }
 
@@ -8803,6 +8965,12 @@ int RGWRados::open_bucket_index(const RGWBucketInfo& bucket_info,
 
   return 0;
 }
+
+int RGWRados::open_fdb() {
+  auto ret = openDatabase(&fdb_database);
+  return ret.res;
+}
+
 
 int RGWRados::open_bucket_index_base(const RGWBucketInfo& bucket_info,
 				     librados::IoCtx& index_ctx,
@@ -14282,12 +14450,12 @@ RGWRados *RGWStoreManager::init_raw_storage_provider(CephContext *cct)
 
 void RGWStoreManager::close_storage(RGWRados *store)
 {
-  if (!store)
-    return;
 
-  store->finalize();
+  if (store != nullptr) {
+    store->finalize();
+    delete store;
+  }
 
-  delete store;
 }
 
 librados::Rados* RGWRados::get_rados_handle()
