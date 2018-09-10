@@ -747,6 +747,7 @@ void RGWBucketWebsiteConf::decode_json(JSONObj *obj) {
 void RGWBucketInfo::dump(Formatter *f) const
 {
   encode_json("bucket", bucket, f);
+  encode_json("pinned", pinned, f);
   utime_t ut(creation_time);
   encode_json("creation_time", ut, f);
   encode_json("owner", owner.to_str(), f);

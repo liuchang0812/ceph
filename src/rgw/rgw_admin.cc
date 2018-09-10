@@ -83,12 +83,15 @@ void usage()
   cout << "  bucket link                link bucket to specified user\n";
   cout << "  bucket unlink              unlink bucket from specified user\n";
   cout << "  bucket stats               returns bucket statistics\n";
+  cout << "  bucket info                returns bucket info\n";
   cout << "  bucket rm                  remove bucket\n";
   cout << "  bucket check               check bucket index\n";
   cout << "  bucket reshard             reshard bucket\n";
   cout << "  bucket rewrite             rewrite all objects in the specified bucket\n";
   cout << "  bucket sync disable        disable bucket sync\n";
   cout << "  bucket sync enable         enable bucket sync\n";
+  cout << "  bucket pin                 pin bucket\n";
+  cout << "  bucket unpin               unpin bucket\n";
   cout << "  bi get                     retrieve bucket index object entries\n";
   cout << "  bi put                     store bucket index object entries\n";
   cout << "  bi list                    list raw bucket index entries\n";
@@ -378,6 +381,7 @@ enum {
   OPT_BUCKET_LINK,
   OPT_BUCKET_UNLINK,
   OPT_BUCKET_STATS,
+  OPT_BUCKET_INFO,
   OPT_BUCKET_CHECK,
   OPT_BUCKET_SYNC_STATUS,
   OPT_BUCKET_SYNC_MARKERS,
@@ -385,6 +389,8 @@ enum {
   OPT_BUCKET_SYNC_RUN,
   OPT_BUCKET_SYNC_DISABLE,
   OPT_BUCKET_SYNC_ENABLE,
+  OPT_BUCKET_PIN,
+  OPT_BUCKET_UNPIN,
   OPT_BUCKET_RM,
   OPT_BUCKET_REWRITE,
   OPT_BUCKET_RESHARD,
@@ -629,6 +635,12 @@ static int get_cmd(const char *cmd, const char *prev_cmd, const char *prev_prev_
       return OPT_BUCKET_UNLINK;
     if (strcmp(cmd, "stats") == 0)
       return OPT_BUCKET_STATS;
+    if (strcmp(cmd, "info") == 0)
+      return OPT_BUCKET_INFO;
+    if (strcmp(cmd, "pin") == 0)
+      return OPT_BUCKET_PIN;
+    if (strcmp(cmd, "unpin") == 0)
+      return OPT_BUCKET_UNPIN;
     if (strcmp(cmd, "rm") == 0)
       return OPT_BUCKET_RM;
     if (strcmp(cmd, "rewrite") == 0)
@@ -3233,6 +3245,7 @@ int main(int argc, const char **argv)
 			 OPT_BUCKETS_LIST,
 			 OPT_BUCKET_LIMIT_CHECK,
 			 OPT_BUCKET_STATS,
+			 OPT_BUCKET_INFO,
 			 OPT_BUCKET_SYNC_STATUS,
 			 OPT_BUCKET_SYNC_MARKERS,
 			 OPT_LOG_LIST,
@@ -5371,6 +5384,21 @@ int main(int argc, const char **argv)
     }
   }
 
+  if (opt_cmd == OPT_BUCKET_INFO) {
+    RGWBucketInfo bucket_info;
+    int ret = init_bucket(tenant, bucket_name, bucket_id, bucket_info, bucket);
+    if (ret < 0) {
+      cerr << "ERROR: could not init bucket: " << cpp_strerror(-ret) << std::endl;
+      return -ret;
+    }
+    JSONFormatter f(true);
+    f.open_object_section("BucketInfo");
+    bucket_info.dump(&f);
+    f.close_section();
+    f.flush(cout);
+    return 0;
+  }
+
   if (opt_cmd == OPT_BUCKET_LINK) {
     bucket_op.set_bucket_id(bucket_id);
     string err;
@@ -6967,6 +6995,47 @@ next:
       cerr << "ERROR: sync.init_sync_status() returned ret=" << ret << std::endl;
       return -ret;
     }
+  }
+
+  if (opt_cmd == OPT_BUCKET_PIN) {
+    RGWBucketInfo bucket_info;
+    map<string, bufferlist> attrs;
+    RGWObjectCtx obj_ctx(store);
+
+    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, NULL, &attrs);
+    if (r < 0) {
+      cerr << "could not get bucket info for bucket=" << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+
+    bucket_info.pinned = true;
+
+    r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+    if (r < 0) {
+      cerr << "ERROR: failed writing bucket instance info: " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+  }
+
+  if (opt_cmd == OPT_BUCKET_UNPIN) {
+    RGWBucketInfo bucket_info;
+    map<string, bufferlist> attrs;
+    RGWObjectCtx obj_ctx(store);
+
+    int r = store->get_bucket_info(obj_ctx, tenant, bucket_name, bucket_info, NULL, &attrs);
+    if (r < 0) {
+      cerr << "could not get bucket info for bucket=" << bucket_name << ": " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+
+    bucket_info.pinned = false;
+
+    r = store->put_bucket_instance_info(bucket_info, false, real_time(), &attrs);
+    if (r < 0) {
+      cerr << "ERROR: failed writing bucket instance info: " << cpp_strerror(-r) << std::endl;
+      return -r;
+    }
+ 
   }
 
   if ((opt_cmd == OPT_BUCKET_SYNC_DISABLE) || (opt_cmd == OPT_BUCKET_SYNC_ENABLE)) {
