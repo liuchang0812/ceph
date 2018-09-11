@@ -3089,6 +3089,10 @@ void RGWDeleteBucket::execute()
 
 int RGWPutObj::verify_permission()
 {
+
+  if (s->bucket_info.pinned)
+    return -EACCES;
+
   if (! copy_source.empty()) {
 
     RGWAccessControlPolicy cs_acl(s->cct);
